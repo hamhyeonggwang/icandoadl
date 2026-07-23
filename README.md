@@ -24,6 +24,8 @@ node serve.mjs
 웹캠 영상은 전량 온디바이스 처리 — 저장·클라우드 전송 없음. 랜드마크 파생 수치(개방도·속도 등)만 메모리에서 소비하며, 세션 리포트는 로컬 다운로드(JSON/CSV)만 제공한다.
 
 ## 배포 (Vercel)
-정적 사이트. Vercel 프로젝트 임포트 시 **Framework Preset = Other**, 빌드 명령 없음.
-- 저장소 루트로 서빙: `/` → `index.html`이 `./app/`으로 리다이렉트.
-- (선택) **Root Directory = `app`** 로 설정하면 `/`가 바로 랜딩이 되어 URL이 깔끔하다 (`/runner.html` 등).
+정적 사이트, 빌드 없음. Vercel 임포트 시 **Framework Preset = Other**, 빌드/출력 설정 비움.
+`vercel.json`은 두지 않는다 — `cleanUrls`가 `.html`을 떼고 상대경로 import를 깨뜨리므로 순수 정적 기본 동작에 맡긴다.
+- **저장소 루트로 서빙(기본)**: `/` → `index.html`이 `./app/index.html`(랜딩)로 리다이렉트. 링크는 `/app/runner.html` 등.
+- **(권장) Root Directory = `app`**: Vercel 프로젝트 설정에서 지정하면 `/`가 바로 랜딩,
+  `/runner.html`·`/editor.html`로 URL이 깔끔해진다.

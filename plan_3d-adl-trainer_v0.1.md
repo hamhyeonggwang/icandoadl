@@ -58,7 +58,7 @@ v1 단순화: 스테이션당 타깃 1개, 모든 아이템 → 동일 타깃 ("
 | M5.7 | IADL 시뮬레이션 (v1.1 스키마) | 고르기(select) 스테이션 + 예산 장보기 — 버스·키오스크·계산대·길찾기 | ✅ 2026-07-12 |
 | M5.8 | 현장 피드백 재정비 | 손들기 폐기·세면대 메시·신발 방향 반전·엘리베이터=버튼 스테이션 | ✅ 2026-07-12 |
 | M5.9 | 스테이지 선택 + 인지 목적 명시 | 과제 골라 연습 메뉴, 개별 실행→복귀, 인지기능 배지 | ✅ 2026-07-12 |
-| M6.0 | 배포 | GitHub → Vercel → OTHub.kr 링크 | 예정 |
+| M6.0 | 배포 | GitHub → Vercel → OTHub.kr 링크 | GitHub 푸시 완료 (hamhyeonggwang/icandoadl) · Vercel 임포트 대기 |
 | M6 | Gate 2 (저작성 검증) | 미참여 치료사 1명, 무도움 30분 내 스테이션 2개 세션 저작→링크 실행 | 현장 |
 | M7 | 러너 검증 | 아동 1명 치료사 동석 세션 완주, 실패 종결 0회 | 현장 |
 
@@ -120,9 +120,13 @@ v1 단순화: 스테이션당 타깃 1개, 모든 아이템 → 동일 타깃 ("
   이후 과제는 스킵. 마우스 모드는 카드 숨김(불필요). `ensureDriver()`/`runCalibration()`로 리팩터링.
 - 검증: 마우스 모드에서 메뉴→개별 실행(횡단보도·물건옮기기)→복귀→별점, 뒤로→시작, 전체 하루 순차 실행 확인.
 
-## M6.0 — 배포 (예정)
-GitHub 저장소 → Vercel 정적 배포 → OTHub.kr에 링크 포함. 빌드 불요(순수 정적 + CDN import).
-Vercel은 `app/`을 루트로 서빙하거나 vercel.json으로 rewrite. serve.mjs는 로컬 전용.
+## M6.0 — 배포 (진행 중)
+- **GitHub 푸시 완료** (2026-07-12): `https://github.com/hamhyeonggwang/icandoadl` main 브랜치.
+  독립 git 저장소로 init(상위 Project repo와 분리). settings.local.json 자동 제외, files.zip/DS_Store gitignore.
+- 배포 구조: 루트 `index.html` → `./app/` 리다이렉트, `app/index.html` = 랜딩(러너/에디터).
+  리라이트 대신 리다이렉트 방식 — 상대경로 ES module import가 깨지지 않도록.
+- **다음(사용자 계정 필요)**: Vercel에서 저장소 임포트(Framework=Other, 빌드 없음) → 배포 URL을 OTHub.kr에 링크.
+  선택: Vercel Root Directory=`app`으로 설정 시 `/`가 바로 랜딩(URL 깔끔).
 
 ## 실패호 제거 설계 (러너)
 - 놓기 실패(존 밖) → 사물이 그 자리에 남음, 재쥐기 가능. 실패 이벤트 없음.
