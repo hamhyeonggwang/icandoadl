@@ -1,0 +1,872 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gate 1 제스처 어휘 스파이크 — ADL 웹캠 훈련 도구</title>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#181b22; --panel2:#20242e; --line:#2b303c;
+    --text:#e7e9ee; --muted:#8b93a7; --accent:#4fd1c5; --warn:#f6ad55;
+    --danger:#fc8181; --ok:#68d391; --fist:#fc8181; --open:#68d391;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Malgun Gothic",sans-serif;
+    display:flex; flex-direction:column; align-items:center; padding:16px; gap:12px;
+  }
+  h1{font-size:16px; font-weight:600; margin:0; color:var(--text);}
+  .sub{font-size:12px; color:var(--muted); margin-top:2px;}
+  header{width:100%; max-width:1180px; display:flex; justify-content:space-between; align-items:flex-start;}
+  .badge{font-size:11px; padding:3px 8px; border-radius:999px; background:var(--panel2); color:var(--accent); border:1px solid var(--line);}
+  .layout{display:flex; gap:14px; width:100%; max-width:1180px; align-items:flex-start; flex-wrap:wrap;}
+  .stage{position:relative; width:720px; max-width:100%; border-radius:12px; overflow:hidden; border:1px solid var(--line); background:#000;}
+  video{display:none;}
+  canvas#overlay{width:100%; display:block; background:#000;}
+  .side{flex:1; min-width:320px; display:flex; flex-direction:column; gap:10px;}
+  .panel{background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px 14px;}
+  .panel h2{font-size:12px; margin:0 0 8px; color:var(--muted); font-weight:600; letter-spacing:.02em; text-transform:uppercase;}
+  .row{display:flex; justify-content:space-between; align-items:center; font-size:13px; padding:3px 0;}
+  .row .k{color:var(--muted);}
+  .row .v{font-variant-numeric:tabular-nums; font-weight:600;}
+  .gaugewrap{margin:6px 0;}
+  .gaugelabel{display:flex; justify-content:space-between; font-size:11px; color:var(--muted); margin-bottom:3px;}
+  .gauge{height:8px; border-radius:6px; background:#0c0e13; overflow:hidden; position:relative;}
+  .gauge .fill{height:100%; border-radius:6px; transition:width .05s linear;}
+  .gauge .zone{position:absolute; top:0; bottom:0; width:1px; background:rgba(255,255,255,.25);}
+  .state-pill{display:inline-block; font-size:11px; padding:2px 8px; border-radius:6px; font-weight:700; letter-spacing:.02em;}
+  .st-LOCKED{background:#33384a; color:var(--muted);}
+  .st-ARMED{background:#3b3320; color:var(--warn);}
+  .st-CARRY{background:#1f3a33; color:var(--ok);}
+  .st-RELEASE{background:#3a2020; color:var(--danger);}
+  button{
+    font-family:inherit; font-size:13px; font-weight:600; padding:9px 14px; border-radius:8px;
+    border:1px solid var(--line); background:var(--panel2); color:var(--text); cursor:pointer;
+  }
+  button.primary{background:var(--accent); color:#08201d; border-color:var(--accent);}
+  button.warn{background:var(--warn); color:#3a2400; border-color:var(--warn);}
+  button:disabled{opacity:.4; cursor:not-allowed;}
+  .btnrow{display:flex; gap:8px; flex-wrap:wrap;}
+  .log{
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11px; color:var(--muted);
+    max-height:140px; overflow-y:auto; background:#0c0e13; border-radius:8px; padding:8px; line-height:1.5;
+  }
+  .log .ev{color:var(--text);}
+  .calib-overlay{
+    position:absolute; inset:0; background:rgba(10,12,16,.88); display:flex; flex-direction:column;
+    align-items:center; justify-content:center; text-align:center; padding:24px; gap:10px;
+  }
+  .calib-overlay h3{font-size:18px; margin:0;}
+  .calib-overlay p{font-size:13px; color:var(--muted); margin:0; max-width:420px;}
+  .countdown{font-size:44px; font-weight:700; color:var(--accent); font-variant-numeric:tabular-nums;}
+  .hidden{display:none !important;}
+  .mode-tabs{display:flex; gap:6px;}
+  .mode-tabs button{flex:1; padding:8px; font-size:12px;}
+  .mode-tabs button.active{background:var(--accent); color:#08201d; border-color:var(--accent);}
+  .note{font-size:11px; color:var(--muted); line-height:1.5; margin-top:4px;}
+  .note b{color:var(--warn); font-weight:600;}
+  .metric-tag{font-size:10px; padding:1px 6px; border-radius:4px; background:var(--panel2); color:var(--muted);}
+  footer{width:100%; max-width:1180px; font-size:11px; color:var(--muted); text-align:center; padding:8px 0 20px;}
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Gate 1 — 제스처 어휘 스파이크</h1>
+    <div class="sub">ADL 웹캠 훈련 도구 · Problem Brief v0.1 부록 구현 · 진단 전용, 완성 게임 아님</div>
+  </div>
+  <span class="badge" id="fpsBadge">FPS —</span>
+</header>
+
+<div class="layout">
+  <div class="stage" id="stage">
+    <video id="video" playsinline autoplay muted></video>
+    <canvas id="overlay"></canvas>
+
+    <div class="calib-overlay" id="calibOverlay">
+      <h3 id="calibTitle">시작 전 카메라를 켜세요</h3>
+      <p id="calibDesc">아동이 화면 정면, 웹캠에서 약 60~90cm 거리에 앉은 상태에서 시작하세요. 조명은 실제 치료실 조건 그대로 유지합니다.</p>
+      <div class="countdown hidden" id="calibCountdown">5</div>
+      <div class="btnrow" id="calibBtnRow">
+        <button class="primary" id="btnStart">카메라 시작</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="side">
+
+    <div class="panel">
+      <h2>세션 제어</h2>
+      <div class="btnrow">
+        <button class="primary" id="btnCalibrate" disabled>15초 캘리브레이션 시작</button>
+        <button id="btnRecalibrate" disabled>재캘리브레이션</button>
+      </div>
+      <div class="mode-tabs" style="margin-top:8px;">
+        <button class="active" id="tabGrasp" data-mode="grasp">조작 모드 (쥐기·놓기)</button>
+        <button id="tabLoco" data-mode="loco">이동 모드 (교대·조향)</button>
+      </div>
+      <div class="note">두 모드는 같은 인식 루프를 공유합니다. 실제 제품은 페이즈 교대로 자동 전환되지만, 본 스파이크는 지표 측정을 위해 수동 전환합니다.</div>
+    </div>
+
+    <div class="panel">
+      <h2>손 상태 (Grasp FSM)</h2>
+      <div class="row"><span class="k">왼손</span><span class="v"><span class="state-pill st-LOCKED" id="stateL">LOCKED</span></span></div>
+      <div class="gaugewrap">
+        <div class="gaugelabel"><span>openness L</span><span id="opennessLVal">—</span></div>
+        <div class="gauge"><div class="fill" id="opennessLFill" style="width:0%; background:var(--muted);"></div><div class="zone" style="left:35%"></div><div class="zone" style="left:65%"></div></div>
+      </div>
+      <div class="row" style="margin-top:8px;"><span class="k">오른손</span><span class="v"><span class="state-pill st-LOCKED" id="stateR">LOCKED</span></span></div>
+      <div class="gaugewrap">
+        <div class="gaugelabel"><span>openness R</span><span id="opennessRVal">—</span></div>
+        <div class="gauge"><div class="fill" id="opennessRFill" style="width:0%; background:var(--muted);"></div><div class="zone" style="left:35%"></div><div class="zone" style="left:65%"></div></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>이동 신호</h2>
+      <div class="row"><span class="k">교대 스트로크</span><span class="v" id="strokeVal">대기</span></div>
+      <div class="gaugewrap">
+        <div class="gaugelabel"><span>체간 기울기 lean</span><span id="leanVal">0.00</span></div>
+        <div class="gauge"><div class="fill" id="leanFill" style="width:50%; background:var(--accent); margin-left:0;"></div></div>
+      </div>
+      <div class="row"><span class="k">어깨 롤 각도</span><span class="v" id="rollVal">—</span></div>
+      <div class="note">lean은 어깨중점 x변위(체간), roll은 어깨선 기울기 — 의자째 이동 보상 구분용(A8 판단 근거, 둘 다 로깅).</div>
+    </div>
+
+    <div class="panel">
+      <h2>이벤트 마킹 (관찰자용)</h2>
+      <div class="btnrow">
+        <button class="warn" id="btnMarkIntentional">다음 릴리즈는 &quot;의도됨&quot;으로 표시</button>
+      </div>
+      <div class="note">치료사가 의도된 놓기 직전 누릅니다. 누르지 않고 발생한 RELEASE는 오낙하 후보로 집계됩니다(오낙하율 지표).</div>
+      <div class="row" style="margin-top:6px;"><span class="k">자동 RELEASE 총계</span><span class="v" id="releaseTotal">0</span></div>
+      <div class="row"><span class="k">의도 표시 없는 RELEASE(오낙하 후보)</span><span class="v" id="releaseUnmarked">0</span></div>
+    </div>
+
+    <div class="panel">
+      <h2>세션 지표 요약</h2>
+      <div class="row"><span class="k">경과 시간</span><span class="v" id="elapsed">00:00</span></div>
+      <div class="row"><span class="k">결합 FPS (평균)</span><span class="v" id="fpsAvg">—</span> <span class="metric-tag">목표 ≥20</span></div>
+      <div class="row"><span class="k">쥐기 시도</span><span class="v" id="graspAttempts">0</span></div>
+      <div class="row"><span class="k">쥐기 실패(대상 없이 FIST)</span><span class="v" id="graspFail">0</span></div>
+      <div class="row"><span class="k">검출된 교대 스트로크</span><span class="v" id="strokeCount">0</span></div>
+      <div class="btnrow" style="margin-top:8px;">
+        <button id="btnDownload" disabled>CSV 다운로드 (랜드마크 파생값만)</button>
+        <button id="btnClear">로그 초기화</button>
+      </div>
+      <div class="note">영상 프레임은 저장·전송되지 않습니다(C2). CSV에는 openness·속도·기울기 등 파생 수치만 타임스탬프와 함께 기록됩니다.</div>
+    </div>
+
+    <div class="panel">
+      <h2>이벤트 로그</h2>
+      <div class="log" id="eventLog"></div>
+    </div>
+
+  </div>
+</div>
+
+<footer>
+  Gate 1 스파이크 v0.1 · 모든 임계값은 초기 추정(estimate)이며 본 세션 데이터로 캘리브레이션 예정 · Digital Product Designer L2/L3 산출물
+</footer>
+
+<script type="importmap">
+{
+  "imports": {
+    "@mediapipe/tasks-vision": "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs"
+  }
+}
+</script>
+
+<script type="module">
+import { HandLandmarker, PoseLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
+
+/* ============================================================
+   상수 · 파라미터 (Problem Brief 부록 표 기반 — 전부 초기 추정치)
+   ============================================================ */
+const PARAMS = {
+  OPEN_THRESH: 0.65,        // 추정치 — 정규화 openness 상단 임계
+  FIST_THRESH: 0.35,        // 추정치 — 정규화 openness 하단 임계
+  DEBOUNCE_MS: 130,         // 추정치 — 상태 확정 유지시간 (~4프레임@30fps)
+  RELEASE_HOLD_MS: 300,     // 추정치 — 놓기 판정 OPEN 유지시간 t_release
+  RELEASE_MAX_SPEED: 0.9,   // 추정치 — 손목 정규화 속도 상한 (놓기 허용 저속 기준)
+  GRASP_RADIUS_PAD: 0.20,   // 추정치 — 오브젝트 바운딩 대비 잡기반경 여유(+20%)
+  ALT_STROKE_WINDOW_MS: 800,// 추정치 — 교대 유효 간격 Δt_alt
+  STROKE_MIN_VY: 0.55,      // 추정치 — 스트로크로 인정할 최소 손목 수직속도(정규화/초)
+  POSE_EVERY_N_FRAMES: 3,   // 결합 FPS 확보를 위한 pose 추론 스킵 간격
+  LEAN_DEADZONE: 0.15,      // 추정치 — 조향 데드존 ±15%
+  CALIB_PHASE_MS: 5000,     // 캘리브레이션 각 단계 길이(펴기/쥐기/중립 각 5초 = 총 15초)
+};
+
+/* ============================================================
+   DOM 참조
+   ============================================================ */
+const video = document.getElementById('video');
+const canvas = document.getElementById('overlay');
+const ctx = canvas.getContext('2d');
+const stage = document.getElementById('stage');
+const calibOverlay = document.getElementById('calibOverlay');
+const calibTitle = document.getElementById('calibTitle');
+const calibDesc = document.getElementById('calibDesc');
+const calibCountdown = document.getElementById('calibCountdown');
+const btnStart = document.getElementById('btnStart');
+const btnCalibrate = document.getElementById('btnCalibrate');
+const btnRecalibrate = document.getElementById('btnRecalibrate');
+const btnMarkIntentional = document.getElementById('btnMarkIntentional');
+const btnDownload = document.getElementById('btnDownload');
+const btnClear = document.getElementById('btnClear');
+const fpsBadge = document.getElementById('fpsBadge');
+const elapsedEl = document.getElementById('elapsed');
+const fpsAvgEl = document.getElementById('fpsAvg');
+const graspAttemptsEl = document.getElementById('graspAttempts');
+const graspFailEl = document.getElementById('graspFail');
+const strokeCountEl = document.getElementById('strokeCount');
+const releaseTotalEl = document.getElementById('releaseTotal');
+const releaseUnmarkedEl = document.getElementById('releaseUnmarked');
+const eventLogEl = document.getElementById('eventLog');
+const leanValEl = document.getElementById('leanVal');
+const leanFillEl = document.getElementById('leanFill');
+const rollValEl = document.getElementById('rollVal');
+const strokeValEl = document.getElementById('strokeVal');
+
+const sideEls = {
+  L: { state: document.getElementById('stateL'), fill: document.getElementById('opennessLFill'), val: document.getElementById('opennessLVal') },
+  R: { state: document.getElementById('stateR'), fill: document.getElementById('opennessRFill'), val: document.getElementById('opennessRVal') },
+};
+
+let mode = 'grasp'; // 'grasp' | 'loco'
+document.querySelectorAll('.mode-tabs button').forEach(b=>{
+  b.addEventListener('click', ()=>{
+    document.querySelectorAll('.mode-tabs button').forEach(x=>x.classList.remove('active'));
+    b.classList.add('active');
+    mode = b.dataset.mode;
+    logEvent(`모드 전환 → ${mode === 'grasp' ? '조작' : '이동'}`);
+  });
+});
+
+/* ============================================================
+   상태
+   ============================================================ */
+let handLandmarker, poseLandmarker, visionReady = false;
+let running = false;
+let frameCount = 0;
+let lastFpsTime = performance.now();
+let fpsHistory = [];
+let sessionStartTime = null;
+
+let calibrated = false;
+let calib = {
+  L: { min: null, max: null }, R: { min: null, max: null },
+  torsoNeutralX: null, shoulderWidthRef: null,
+};
+
+// 손별 추적 상태
+const hands = {
+  L: makeHandState(),
+  R: makeHandState(),
+};
+function makeHandState(){
+  return {
+    present:false,
+    opennessRaw:0, opennessNorm:0,
+    classCandidate:'NEUTRAL', classStable:'NEUTRAL', classSince:0,
+    fsm:'LOCKED', fsmSince:0,
+    wristPos:null, wristPrevPos:null, wristPrevT:0, wristVy:0,
+    lastPeakT:0, lastPeakSign:0,
+    carryObjId:null,
+  };
+}
+
+// 진단용 가상 오브젝트(잡기 대상) — 실제 3D 자산 아님, FSM/드롭율 측정용
+let objects = [
+  { id:'obj1', x:0.30, y:0.55, r:0.045, heldBy:null, color:'#f6ad55' },
+  { id:'obj2', x:0.50, y:0.62, r:0.045, heldBy:null, color:'#68d391' },
+  { id:'obj3', x:0.70, y:0.55, r:0.045, heldBy:null, color:'#63b3ed' },
+];
+
+// 이동 모드용 아바타 (2D 대리 표현 — 실제 3D 항행 씬은 Out of scope)
+let avatar = { x:0.5, y:0.5, heading:0 };
+
+let markNextReleaseIntentional = false;
+let counters = { graspAttempts:0, graspFail:0, strokeCount:0, releaseTotal:0, releaseUnmarked:0 };
+
+// CSV 로그 버퍼 (랜드마크 파생값만, 프레임 원본 없음)
+let csvRows = [];
+const csvHeader = [
+  't_ms','mode',
+  'openness_L','state_L','fsm_L',
+  'openness_R','state_R','fsm_R',
+  'wrist_vy_L','wrist_vy_R',
+  'stroke_event','shoulder_lean','shoulder_roll_deg',
+  'fps','event'
+];
+
+/* ============================================================
+   초기화: MediaPipe 모델 로드
+   ============================================================ */
+async function initModels(){
+  const vision = await FilesetResolver.forVisionTasks(
+    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm"
+  );
+
+  handLandmarker = await HandLandmarker.createFromOptions(vision, {
+    baseOptions: {
+      modelAssetPath: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+      delegate: "GPU"
+    },
+    runningMode: "VIDEO",
+    numHands: 2,
+  });
+
+  poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
+    baseOptions: {
+      modelAssetPath: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
+      delegate: "GPU"
+    },
+    runningMode: "VIDEO",
+    numPoses: 1,
+  });
+
+  visionReady = true;
+}
+
+/* ============================================================
+   카메라 시작
+   ============================================================ */
+btnStart.addEventListener('click', async ()=>{
+  btnStart.disabled = true;
+  btnStart.textContent = '모델 로딩 중…';
+  try{
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { width:1280, height:720 }, audio:false });
+    video.srcObject = stream;
+    await video.play();
+    canvas.width = video.videoWidth || 1280;
+    canvas.height = video.videoHeight || 720;
+
+    await initModels();
+
+    calibTitle.textContent = '카메라 준비 완료';
+    calibDesc.textContent = '아동이 정면에 자연스럽게 앉으면 캘리브레이션을 시작하세요.';
+    document.getElementById('calibBtnRow').innerHTML = '';
+    calibOverlay.classList.add('hidden');
+    btnCalibrate.disabled = false;
+    running = true;
+    sessionStartTime = performance.now();
+    requestAnimationFrame(loop);
+  }catch(err){
+    calibTitle.textContent = '카메라 접근 실패';
+    calibDesc.textContent = String(err.message || err);
+    btnStart.disabled = false;
+    btnStart.textContent = '다시 시도';
+  }
+});
+
+/* ============================================================
+   캘리브레이션 (15초: 펴기 5s → 쥐기 5s → 중립자세 5s)
+   ============================================================ */
+btnCalibrate.addEventListener('click', ()=> runCalibration());
+btnRecalibrate.addEventListener('click', ()=> runCalibration());
+
+async function runCalibration(){
+  calibrated = false;
+  btnCalibrate.disabled = true; btnRecalibrate.disabled = true;
+  calibOverlay.classList.remove('hidden');
+
+  const samplesOpen = { L:[], R:[] };
+  const samplesFist = { L:[], R:[] };
+  const samplesNeutral = { x:[] };
+
+  await calibPhase('1/3 · 손을 최대한 펴세요', '양손을 화면에 보이도록 쫙 펴고 유지합니다.', (snap)=>{
+    if(snap.L) samplesOpen.L.push(snap.L.opennessRaw);
+    if(snap.R) samplesOpen.R.push(snap.R.opennessRaw);
+  });
+
+  await calibPhase('2/3 · 주먹을 꽉 쥐세요', '양손을 최대한 꽉 쥔 상태로 유지합니다.', (snap)=>{
+    if(snap.L) samplesFist.L.push(snap.L.opennessRaw);
+    if(snap.R) samplesFist.R.push(snap.R.opennessRaw);
+  });
+
+  await calibPhase('3/3 · 정면을 보고 편하게 앉으세요', '체간 중립 자세를 측정합니다. 움직이지 마세요.', (snap)=>{
+    if(snap.torsoX != null) samplesNeutral.x.push(snap.torsoX);
+  });
+
+  function avg(a){ return a.length ? a.reduce((s,v)=>s+v,0)/a.length : null; }
+  calib.L.max = avg(samplesOpen.L); calib.L.min = avg(samplesFist.L);
+  calib.R.max = avg(samplesOpen.R); calib.R.min = avg(samplesFist.R);
+  calib.torsoNeutralX = avg(samplesNeutral.x);
+
+  // 폴백: 한쪽 손이 인식 안 된 경우 합리적 기본 범위 사용(추정치) — 로그로 명시
+  ['L','R'].forEach(h=>{
+    if(calib[h].min==null || calib[h].max==null || calib[h].max<=calib[h].min){
+      calib[h].min = 1.0; calib[h].max = 2.4; // 추정치 폴백
+      logEvent(`⚠ ${h}손 캘리브레이션 샘플 부족 — 기본 추정 범위로 폴백`);
+    }
+  });
+
+  calibrated = true;
+  calibOverlay.classList.add('hidden');
+  btnCalibrate.disabled = false; btnRecalibrate.disabled = false;
+  btnDownload.disabled = false;
+  logEvent(`캘리브레이션 완료 — L[${calib.L.min?.toFixed(2)},${calib.L.max?.toFixed(2)}] R[${calib.R.min?.toFixed(2)},${calib.R.max?.toFixed(2)}] torsoX0=${calib.torsoNeutralX?.toFixed(3)}`);
+}
+
+function calibPhase(title, desc, onFrame){
+  return new Promise(resolve=>{
+    calibTitle.textContent = title;
+    calibDesc.textContent = desc;
+    calibCountdown.classList.remove('hidden');
+    const start = performance.now();
+    function tick(){
+      const elapsed = performance.now() - start;
+      const remain = Math.max(0, Math.ceil((PARAMS.CALIB_PHASE_MS - elapsed)/1000));
+      calibCountdown.textContent = remain;
+      onFrame(lastSnapshot);
+      if(elapsed >= PARAMS.CALIB_PHASE_MS){
+        calibCountdown.classList.add('hidden');
+        resolve();
+      } else {
+        requestAnimationFrame(tick);
+      }
+    }
+    tick();
+  });
+}
+
+let lastSnapshot = { L:null, R:null, torsoX:null };
+
+/* ============================================================
+   기하 계산 유틸
+   ============================================================ */
+function dist(a,b){ return Math.hypot(a.x-b.x, a.y-b.y); }
+
+// 손 랜드마크 인덱스: 0 WRIST, 5/9/13/17 각 MCP, 8/12/16/20 각 TIP
+function computeOpenness(lm){
+  const wrist = lm[0];
+  const handScale = dist(wrist, lm[5]) || 1e-4; // wrist–indexMCP, 굴곡에 비교적 강건한 스케일 기준
+  const tips = [8,12,16,20];
+  const ratios = tips.map(i => dist(lm[i], wrist) / handScale);
+  return ratios.reduce((s,v)=>s+v,0) / ratios.length; // raw openness (대략 1.0=쥔 상태 ~ 2.5=편 상태)
+}
+
+function normalizeOpenness(raw, calibRange){
+  if(!calibRange || calibRange.min==null || calibRange.max==null) return 0.5;
+  const n = (raw - calibRange.min) / (calibRange.max - calibRange.min);
+  return Math.min(1, Math.max(0, n));
+}
+
+/* ============================================================
+   메인 루프
+   ============================================================ */
+function loop(){
+  if(!running){ requestAnimationFrame(loop); return; }
+  const now = performance.now();
+  frameCount++;
+
+  const handRes = handLandmarker.detectForVideo(video, now);
+  let poseRes = null;
+  if(frameCount % PARAMS.POSE_EVERY_N_FRAMES === 0){
+    poseRes = poseLandmarker.detectForVideo(video, now);
+    lastPoseResult = poseRes;
+  } else {
+    poseRes = lastPoseResult;
+  }
+
+  // 좌/우 손 매핑: MediaPipe handedness는 "카메라 기준" 라벨 — 거울모드 표시이므로
+  // 사용자 관점에서는 라벨이 반대로 지각된다. 여기서는 landmarker의 handedness 라벨을
+  // 그대로 내부 키(L/R)로 사용하고, 화면에는 거울 변환만 적용해 시각적으로 사용자 자신의
+  // 왼손이 화면 왼쪽(사용자 기준)에 오도록 맞춘다. FSM 로직은 라벨 일관성만 중요하므로 무방.
+  const snap = { L:null, R:null, torsoX:null };
+  if(handRes && handRes.landmarks){
+    handRes.landmarks.forEach((lm, idx)=>{
+      const handedness = handRes.handedness?.[idx]?.[0]?.categoryName; // 'Left' | 'Right'
+      const key = handedness === 'Left' ? 'L' : 'R';
+      const raw = computeOpenness(lm);
+      hands[key].present = true;
+      hands[key].opennessRaw = raw;
+      hands[key].opennessNorm = normalizeOpenness(raw, calib[key]);
+      hands[key].landmarks = lm;
+      snap[key] = { opennessRaw: raw };
+      updateWristVelocity(key, lm[0], now);
+    });
+  }
+  // 프레임에서 보이지 않은 손은 present=false로
+  const seenKeys = new Set();
+  if(handRes && handRes.handedness){
+    handRes.handedness.forEach(h=> seenKeys.add(h[0].categoryName === 'Left' ? 'L' : 'R'));
+  }
+  ['L','R'].forEach(k=>{ if(!seenKeys.has(k)) hands[k].present = false; });
+
+  if(poseRes && poseRes.landmarks && poseRes.landmarks[0]){
+    const pl = poseRes.landmarks[0];
+    const ls = pl[11], rs = pl[12]; // LEFT_SHOULDER, RIGHT_SHOULDER (BlazePose 토폴로지)
+    if(ls && rs){
+      const midX = (ls.x + rs.x)/2;
+      const shoulderWidth = dist(ls, rs) || 1e-4;
+      snap.torsoX = midX;
+      const lean = calib.torsoNeutralX!=null ? (midX - calib.torsoNeutralX) / shoulderWidth : 0;
+      const rollDeg = Math.atan2(rs.y-ls.y, rs.x-ls.x) * 180/Math.PI;
+      currentLean = lean; currentRoll = rollDeg;
+    }
+  }
+
+  lastSnapshot = snap;
+
+  // 손별 상태분류(히스테리시스+디바운스) 및 FSM 갱신
+  ['L','R'].forEach(k=> updateHandClassification(k, now));
+  ['L','R'].forEach(k=> updateFSM(k, now));
+
+  // 교대 스트로크 검출
+  detectAlternatingStroke(now);
+
+  // 이동 아바타 갱신(이동 모드일 때만 시각 반영)
+  if(mode==='loco') updateAvatar();
+
+  // 렌더
+  draw(handRes, poseRes);
+
+  // FPS
+  const dt = now - lastFpsTime;
+  lastFpsTime = now;
+  const fps = 1000/dt;
+  fpsHistory.push(fps);
+  if(fpsHistory.length>60) fpsHistory.shift();
+  const fpsAvg = fpsHistory.reduce((s,v)=>s+v,0)/fpsHistory.length;
+  fpsBadge.textContent = `FPS ${fps.toFixed(0)}`;
+  fpsAvgEl.textContent = fpsAvg.toFixed(1);
+
+  // 경과시간
+  if(sessionStartTime){
+    const sec = Math.floor((now-sessionStartTime)/1000);
+    elapsedEl.textContent = `${String(Math.floor(sec/60)).padStart(2,'0')}:${String(sec%60).padStart(2,'0')}`;
+  }
+
+  // 사이드패널 갱신
+  renderSidePanels();
+
+  // CSV 로그 (캘리브레이션 이후만 의미있는 데이터)
+  if(calibrated){
+    logCsvRow(now);
+  }
+
+  requestAnimationFrame(loop);
+}
+let lastPoseResult = null;
+let currentLean = 0, currentRoll = 0;
+
+function updateWristVelocity(key, wristLm, now){
+  const h = hands[key];
+  if(h.wristPrevPos && h.wristPrevT){
+    const dt = (now - h.wristPrevT)/1000;
+    if(dt>0){
+      // y는 아래로 증가 → 위쪽 스윙을 양수로 다루기 위해 부호 반전
+      h.wristVy = -(wristLm.y - h.wristPrevPos.y)/dt;
+    }
+  }
+  h.wristPrevPos = { x: wristLm.x, y: wristLm.y };
+  h.wristPrevT = now;
+  h.wristPos = { x: wristLm.x, y: wristLm.y };
+}
+
+function updateHandClassification(key, now){
+  const h = hands[key];
+  if(!h.present){ h.classCandidate = 'NEUTRAL'; return; }
+  let candidate = 'NEUTRAL';
+  if(h.opennessNorm >= PARAMS.OPEN_THRESH) candidate = 'OPEN';
+  else if(h.opennessNorm <= PARAMS.FIST_THRESH) candidate = 'FIST';
+
+  if(candidate !== h.classCandidate){
+    h.classCandidate = candidate;
+    h.classSince = now;
+  }
+  if(candidate !== 'NEUTRAL' && candidate !== h.classStable){
+    if(now - h.classSince >= PARAMS.DEBOUNCE_MS){
+      h.classStable = candidate;
+    }
+  }
+}
+
+function updateFSM(key, now){
+  const h = hands[key];
+  const prevState = h.fsm;
+
+  switch(h.fsm){
+    case 'LOCKED':
+      if(h.classStable === 'OPEN'){
+        h.fsm = 'ARMED'; h.fsmSince = now;
+      }
+      break;
+    case 'ARMED':
+      if(h.classStable === 'FIST'){
+        const target = findGraspTarget(key);
+        counters.graspAttempts++;
+        if(target){
+          target.heldBy = key;
+          h.carryObjId = target.id;
+          h.fsm = 'CARRY'; h.fsmSince = now;
+          logEvent(`${key} 쥐기 성공 → ${target.id}`);
+        } else {
+          counters.graspFail++;
+          h.fsm = 'LOCKED'; h.fsmSince = now; // R1: 빈 주먹은 다시 펴야 재무장
+          logEvent(`${key} 빈 주먹 (쥐기 실패, 대상 없음)`);
+        }
+      }
+      break;
+    case 'CARRY': {
+      const obj = objects.find(o=>o.id===h.carryObjId);
+      if(obj){ obj.x = h.wristPos ? h.wristPos.x : obj.x; obj.y = h.wristPos ? h.wristPos.y : obj.y; }
+      const speed = Math.abs(h.wristVy);
+      if(h.classStable === 'OPEN' && speed <= PARAMS.RELEASE_MAX_SPEED){
+        if(!h.openHoldStart) h.openHoldStart = now;
+        if(now - h.openHoldStart >= PARAMS.RELEASE_HOLD_MS){
+          doRelease(key, now);
+        }
+      } else {
+        h.openHoldStart = null;
+      }
+      break;
+    }
+    case 'RELEASE':
+      h.fsm = 'ARMED'; h.fsmSince = now;
+      break;
+  }
+
+  if(h.fsm !== prevState){
+    // 상태전이 로그는 위에서 개별 처리
+  }
+}
+
+function findGraspTarget(key){
+  const h = hands[key];
+  if(!h.wristPos) return null;
+  for(const obj of objects){
+    if(obj.heldBy) continue;
+    const r = obj.r * (1+PARAMS.GRASP_RADIUS_PAD);
+    if(dist(h.wristPos, obj) <= r) return obj;
+  }
+  return null;
+}
+
+function doRelease(key, now){
+  const h = hands[key];
+  const obj = objects.find(o=>o.id===h.carryObjId);
+  if(obj) obj.heldBy = null;
+  h.carryObjId = null;
+  h.openHoldStart = null;
+  h.fsm = 'RELEASE'; h.fsmSince = now;
+
+  counters.releaseTotal++;
+  let intentional = false;
+  if(markNextReleaseIntentional){
+    intentional = true;
+    markNextReleaseIntentional = false;
+    btnMarkIntentional.textContent = '다음 릴리즈는 "의도됨"으로 표시';
+  } else {
+    counters.releaseUnmarked++;
+  }
+  logEvent(`${key} RELEASE ${intentional ? '(의도됨)' : '(미표시 — 오낙하 후보)'}`);
+  logCsvEvent(now, `RELEASE_${key}_${intentional?'INTENTIONAL':'UNMARKED'}`);
+}
+
+btnMarkIntentional.addEventListener('click', ()=>{
+  markNextReleaseIntentional = true;
+  btnMarkIntentional.textContent = '✓ 다음 릴리즈 의도됨으로 표시 예약됨';
+});
+
+/* ============================================================
+   교대 스트로크 검출 (퐁퐁 swim 피크속도 임펄스 물리 차용)
+   ============================================================ */
+function detectAlternatingStroke(now){
+  ['L','R'].forEach(k=>{
+    const h = hands[k];
+    if(!h.present) return;
+    const vy = h.wristVy;
+    const sign = vy > PARAMS.STROKE_MIN_VY ? 1 : (vy < -PARAMS.STROKE_MIN_VY ? -1 : 0);
+    if(sign !== 0 && sign !== h.lastPeakSign){
+      h.lastPeakT = now;
+      h.lastPeakSign = sign;
+      h._justPeaked = true;
+    } else {
+      h._justPeaked = false;
+    }
+  });
+
+  if(hands.L._justPeaked || hands.R._justPeaked){
+    const dtPeaks = Math.abs(hands.L.lastPeakT - hands.R.lastPeakT);
+    const bothFist = hands.L.classStable==='FIST' && hands.R.classStable==='FIST';
+    if(dtPeaks > 0 && dtPeaks <= PARAMS.ALT_STROKE_WINDOW_MS && bothFist){
+      counters.strokeCount++;
+      strokeValEl.textContent = '검출됨 ✓';
+      avatar.pendingImpulse = true;
+      logCsvEvent(now, 'ALT_STROKE_DETECTED');
+      setTimeout(()=>{ strokeValEl.textContent='대기'; }, 400);
+    }
+  }
+}
+
+function updateAvatar(){
+  // 2D 대리 표현 — 전진량은 스트로크 임펄스 감쇠, 조향은 currentLean
+  avatar.speed = (avatar.speed||0)*0.9;
+  if(avatar.pendingImpulse){ avatar.speed += 0.02; avatar.pendingImpulse = false; }
+  const deadzoned = Math.abs(currentLean) < PARAMS.LEAN_DEADZONE ? 0 : currentLean;
+  avatar.heading += deadzoned * 0.05;
+  avatar.x += Math.sin(avatar.heading) * (avatar.speed||0);
+  avatar.y -= Math.cos(avatar.heading) * (avatar.speed||0);
+  avatar.x = Math.min(0.95, Math.max(0.05, avatar.x));
+  avatar.y = Math.min(0.95, Math.max(0.05, avatar.y));
+}
+
+/* ============================================================
+   렌더링 (거울 모드: 캔버스 좌표계를 반전해 시각적으로만 미러링)
+   ============================================================ */
+function draw(handRes, poseRes){
+  const w = canvas.width, h = canvas.height;
+  ctx.save();
+  ctx.clearRect(0,0,w,h);
+  ctx.translate(w,0); ctx.scale(-1,1); // 거울 변환
+  ctx.drawImage(video, 0,0,w,h);
+
+  if(mode==='grasp'){
+    // 가상 오브젝트
+    objects.forEach(o=>{
+      ctx.beginPath();
+      ctx.arc(o.x*w, o.y*h, o.r*w, 0, Math.PI*2);
+      ctx.fillStyle = o.heldBy ? '#ffffff' : o.color;
+      ctx.globalAlpha = o.heldBy ? 0.95 : 0.7;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.lineWidth = 2; ctx.strokeStyle = o.color; ctx.stroke();
+    });
+  } else {
+    // 이동 모드: 아바타 + 헤딩 표시
+    ctx.beginPath();
+    ctx.arc(avatar.x*w, avatar.y*h, 0.03*w, 0, Math.PI*2);
+    ctx.fillStyle = '#4fd1c5'; ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(avatar.x*w, avatar.y*h);
+    ctx.lineTo(avatar.x*w + Math.sin(avatar.heading)*40, avatar.y*h - Math.cos(avatar.heading)*40);
+    ctx.strokeStyle = '#4fd1c5'; ctx.lineWidth=3; ctx.stroke();
+  }
+
+  // 손 랜드마크
+  if(handRes && handRes.landmarks){
+    handRes.landmarks.forEach((lm, idx)=>{
+      const handedness = handRes.handedness?.[idx]?.[0]?.categoryName;
+      const key = handedness==='Left' ? 'L':'R';
+      const color = hands[key].classStable==='OPEN' ? '#68d391' : (hands[key].classStable==='FIST' ? '#fc8181' : '#e7e9ee');
+      lm.forEach(p=>{
+        ctx.beginPath();
+        ctx.arc(p.x*w, p.y*h, 3, 0, Math.PI*2);
+        ctx.fillStyle = color;
+        ctx.fill();
+      });
+      // 손목 잡기반경 시각화
+      if(hands[key].fsm==='ARMED' || hands[key].fsm==='LOCKED'){
+        ctx.beginPath();
+        ctx.arc(lm[0].x*w, lm[0].y*h, (objects[0].r*(1+PARAMS.GRASP_RADIUS_PAD))*w, 0, Math.PI*2);
+        ctx.strokeStyle = 'rgba(255,255,255,.15)';
+        ctx.stroke();
+      }
+    });
+  }
+
+  // 어깨선 (pose)
+  if(poseRes && poseRes.landmarks && poseRes.landmarks[0]){
+    const pl = poseRes.landmarks[0];
+    const ls = pl[11], rs = pl[12];
+    if(ls && rs){
+      ctx.beginPath();
+      ctx.moveTo(ls.x*w, ls.y*h);
+      ctx.lineTo(rs.x*w, rs.y*h);
+      ctx.strokeStyle = '#f6ad55'; ctx.lineWidth=3; ctx.stroke();
+    }
+  }
+
+  ctx.restore();
+}
+
+/* ============================================================
+   사이드패널 렌더링
+   ============================================================ */
+function renderSidePanels(){
+  ['L','R'].forEach(k=>{
+    const h = hands[k];
+    const el = sideEls[k];
+    el.state.textContent = h.fsm;
+    el.state.className = `state-pill st-${h.fsm}`;
+    el.fill.style.width = `${Math.round(h.opennessNorm*100)}%`;
+    el.fill.style.background = h.classStable==='OPEN' ? 'var(--open)' : (h.classStable==='FIST' ? 'var(--fist)' : 'var(--muted)');
+    el.val.textContent = h.present ? h.opennessNorm.toFixed(2) : '미검출';
+  });
+
+  leanValEl.textContent = currentLean.toFixed(2);
+  leanFillEl.style.width = `${Math.min(100,Math.max(0,50+currentLean*50))}%`;
+  leanFillEl.style.marginLeft = currentLean<0 ? `${Math.max(0,50+currentLean*50)}%` : '50%';
+  rollValEl.textContent = `${currentRoll.toFixed(1)}°`;
+
+  graspAttemptsEl.textContent = counters.graspAttempts;
+  graspFailEl.textContent = counters.graspFail;
+  strokeCountEl.textContent = counters.strokeCount;
+  releaseTotalEl.textContent = counters.releaseTotal;
+  releaseUnmarkedEl.textContent = counters.releaseUnmarked;
+}
+
+/* ============================================================
+   로깅 · CSV
+   ============================================================ */
+function logEvent(msg){
+  const t = sessionStartTime ? ((performance.now()-sessionStartTime)/1000).toFixed(1) : '0.0';
+  const div = document.createElement('div');
+  div.innerHTML = `<span class="ev">[${t}s]</span> ${msg}`;
+  eventLogEl.prepend(div);
+  while(eventLogEl.children.length>200) eventLogEl.removeChild(eventLogEl.lastChild);
+}
+
+function logCsvRow(now){
+  csvRows.push([
+    now.toFixed(0), mode,
+    hands.L.opennessNorm.toFixed(3), hands.L.classStable, hands.L.fsm,
+    hands.R.opennessNorm.toFixed(3), hands.R.classStable, hands.R.fsm,
+    hands.L.wristVy.toFixed(3), hands.R.wristVy.toFixed(3),
+    '', currentLean.toFixed(3), currentRoll.toFixed(1),
+    fpsHistory.length? fpsHistory[fpsHistory.length-1].toFixed(1):'',
+    ''
+  ]);
+  if(csvRows.length > 20000) csvRows.shift(); // 장시간 세션 메모리 보호(추정 상한)
+}
+function logCsvEvent(now, eventName){
+  csvRows.push([
+    now.toFixed(0), mode,
+    hands.L.opennessNorm.toFixed(3), hands.L.classStable, hands.L.fsm,
+    hands.R.opennessNorm.toFixed(3), hands.R.classStable, hands.R.fsm,
+    hands.L.wristVy.toFixed(3), hands.R.wristVy.toFixed(3),
+    eventName.startsWith('ALT_STROKE')?1:'', currentLean.toFixed(3), currentRoll.toFixed(1),
+    fpsHistory.length? fpsHistory[fpsHistory.length-1].toFixed(1):'',
+    eventName
+  ]);
+}
+
+btnDownload.addEventListener('click', ()=>{
+  const lines = [csvHeader.join(','), ...csvRows.map(r=>r.join(','))];
+  const blob = new Blob([lines.join('\n')], { type:'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const ts = new Date().toISOString().replace(/[:.]/g,'-');
+  a.href = url; a.download = `gate1-spike-log_${ts}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+btnClear.addEventListener('click', ()=>{
+  csvRows = [];
+  counters = { graspAttempts:0, graspFail:0, strokeCount:0, releaseTotal:0, releaseUnmarked:0 };
+  eventLogEl.innerHTML = '';
+  logEvent('로그 초기화됨');
+});
+
+/* 캔버스 리사이즈 대응 */
+window.addEventListener('resize', ()=>{});
+</script>
+
+</body>
+</html>

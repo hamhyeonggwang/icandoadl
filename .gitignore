@@ -1,0 +1,9 @@
+# macOS
+.DS_Store
+
+# 배포 불필요 자산
+files.zip
+files/
+
+# 의존성/빌드 (현재 없음 — 순수 정적 + CDN)
+node_modules/

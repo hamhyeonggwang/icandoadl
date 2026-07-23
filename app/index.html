@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>I Can Do ADL — 웹캠 일상생활 훈련</title>
+<style>
+  :root{ --bg:#0f1115; --panel:#181b22; --line:#2b303c; --text:#e7e9ee; --muted:#8b93a7; --accent:#4fd1c5; }
+  *{box-sizing:border-box;}
+  html,body{margin:0; min-height:100%; background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Malgun Gothic",sans-serif;}
+  body{display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:100vh; padding:24px; gap:8px;}
+  h1{font-size:30px; margin:0; text-align:center;}
+  .tag{font-size:14px; color:var(--muted); margin:0 0 20px; text-align:center; max-width:560px; line-height:1.6;}
+  .cards{display:flex; gap:16px; flex-wrap:wrap; justify-content:center;}
+  a.card{display:flex; flex-direction:column; gap:8px; width:240px; text-decoration:none; color:var(--text);
+    background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:22px; transition:border-color .15s, transform .1s;}
+  a.card:hover{border-color:var(--accent); transform:translateY(-3px);}
+  a.card .emoji{font-size:40px;}
+  a.card .t{font-size:19px; font-weight:700;}
+  a.card .d{font-size:13px; color:var(--muted); line-height:1.5;}
+  .foot{font-size:12px; color:var(--muted); margin-top:24px; text-align:center; line-height:1.7;}
+  .cog{display:inline-block; font-size:11px; color:var(--accent); border:1px solid var(--line);
+    border-radius:999px; padding:2px 9px; margin:2px;}
+</style>
+</head>
+<body>
+  <h1>🖐️ I Can Do ADL</h1>
+  <p class="tag">웹캠으로 손과 몸을 움직여 일상생활(ADL)을 연습하는 아동 작업치료 도구.<br>
+    영상은 기기 밖으로 나가지 않아요 (온디바이스 처리).</p>
+  <div class="cards">
+    <a class="card" href="./runner.html">
+      <span class="emoji">🎮</span>
+      <span class="t">아동 러너</span>
+      <span class="d">웹캠 앞에서 마을 하루를 경험하며 과제를 수행해요. 과제를 골라 연습할 수도 있어요.</span>
+    </a>
+    <a class="card" href="./editor.html">
+      <span class="emoji">🛠️</span>
+      <span class="t">치료사 에디터</span>
+      <span class="d">코드 없이 아동별 훈련 세션을 저작하고 실행 링크를 만들어요.</span>
+    </a>
+  </div>
+  <div class="foot">
+    훈련 인지영역
+    <span class="cog">주의·집중</span><span class="cog">작업기억</span><span class="cog">충동 억제</span><span class="cog">인과 추론</span>
+    <br>웹캠 없이 둘러보려면 러너 주소 뒤에 <code>?input=mouse</code> 를 붙이세요.
+  </div>
+</body>
+</html>
