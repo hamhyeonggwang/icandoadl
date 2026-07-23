@@ -58,7 +58,7 @@ v1 단순화: 스테이션당 타깃 1개, 모든 아이템 → 동일 타깃 ("
 | M5.7 | IADL 시뮬레이션 (v1.1 스키마) | 고르기(select) 스테이션 + 예산 장보기 — 버스·키오스크·계산대·길찾기 | ✅ 2026-07-12 |
 | M5.8 | 현장 피드백 재정비 | 손들기 폐기·세면대 메시·신발 방향 반전·엘리베이터=버튼 스테이션 | ✅ 2026-07-12 |
 | M5.9 | 스테이지 선택 + 인지 목적 명시 | 과제 골라 연습 메뉴, 개별 실행→복귀, 인지기능 배지 | ✅ 2026-07-12 |
-| M6.0 | 배포 | GitHub → Vercel → OTHub.kr 링크 | GitHub 푸시 완료 (hamhyeonggwang/icandoadl) · Vercel 임포트 대기 |
+| M6.0 | 배포 | GitHub → Vercel → OTHub.kr 링크 | ✅ 라이브 (icandoadl.vercel.app) · 404 수정 완료 · OTHub 링크 대기 |
 | M6 | Gate 2 (저작성 검증) | 미참여 치료사 1명, 무도움 30분 내 스테이션 2개 세션 저작→링크 실행 | 현장 |
 | M7 | 러너 검증 | 아동 1명 치료사 동석 세션 완주, 실패 종결 0회 | 현장 |
 
@@ -125,8 +125,12 @@ v1 단순화: 스테이션당 타깃 1개, 모든 아이템 → 동일 타깃 ("
   독립 git 저장소로 init(상위 Project repo와 분리). settings.local.json 자동 제외, files.zip/DS_Store gitignore.
 - 배포 구조: 루트 `index.html` → `./app/` 리다이렉트, `app/index.html` = 랜딩(러너/에디터).
   리라이트 대신 리다이렉트 방식 — 상대경로 ES module import가 깨지지 않도록.
-- **다음(사용자 계정 필요)**: Vercel에서 저장소 임포트(Framework=Other, 빌드 없음) → 배포 URL을 OTHub.kr에 링크.
-  선택: Vercel Root Directory=`app`으로 설정 시 `/`가 바로 랜딩(URL 깔끔).
+- **Vercel 배포 완료** (2026-07-12): `https://icandoadl.vercel.app`. 저장소 루트 서빙(파일은 `/app/` 아래).
+- **404 버그 수정**: 초기 `vercel.json`의 `cleanUrls`+`trailingSlash:false`가 랜딩 `/app/`→`/app`으로 만들어
+  상대링크 `./runner.html`을 `/runner`(404)로 깨뜨림. → vercel.json 제거(순수 정적 기본 동작),
+  루트 리다이렉트를 `./app/index.html` 명시 경로로 변경. 라이브 검증: `/`→랜딩→`/app/runner.html` 정상 로드.
+- **다음(사용자)**: 배포 URL(`https://icandoadl.vercel.app/`)을 OTHub.kr에 링크.
+  선택: Vercel Root Directory=`app`으로 설정 시 `/app/` 접두어 없이 `/runner.html`로 깔끔해짐.
 
 ## 실패호 제거 설계 (러너)
 - 놓기 실패(존 밖) → 사물이 그 자리에 남음, 재쥐기 가능. 실패 이벤트 없음.
