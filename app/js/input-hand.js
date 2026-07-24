@@ -34,7 +34,9 @@ export class HandDriver {
     this._lastSnapshot = { L: null, R: null, torsoX: null };
   }
 
-  async start() {
+  async start(onStage) {
+    // onStage: 로딩 UI 알림 전용 콜백 — 초기화 로직에는 관여하지 않음
+    onStage?.('camera');
     const video = document.createElement('video');
     video.autoplay = true; video.playsInline = true; video.muted = true;
     const stream = await navigator.mediaDevices.getUserMedia({
@@ -44,6 +46,7 @@ export class HandDriver {
     await video.play();
     this.videoEl = video;
 
+    onStage?.('model');
     const vision = await FilesetResolver.forVisionTasks(
       'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm'
     );

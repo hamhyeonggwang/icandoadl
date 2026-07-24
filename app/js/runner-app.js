@@ -28,6 +28,22 @@ const fpsBadge = document.getElementById('fpsBadge');
 const assistBadge = document.getElementById('assistBadge');
 const fadeEl = document.getElementById('fade');
 const placeChip = document.getElementById('placeChip');
+const hotbarEl = document.getElementById('hotbar');
+
+/* 핫바: 과제 기능의 재해석 — 스테이션=목표 사물 슬롯, 고르기=스텝 슬롯 (표시 전용) */
+function setHotbar(slots) {
+  if (!slots || !slots.length) {
+    hotbarEl.classList.add('hidden');
+    hotbarEl.innerHTML = '';
+    return;
+  }
+  hotbarEl.innerHTML = slots.map((s, i) =>
+    `<div class="vx-slot${s.done ? ' done' : ''}${s.active ? ' active' : ''}">` +
+    `<span class="num">${i + 1}</span><span>${s.icon}</span>` +
+    `${s.done ? '<span class="chk">✔</span>' : ''}</div>`
+  ).join('');
+  hotbarEl.classList.remove('hidden');
+}
 
 /* ---------- 세션 로드 ---------- */
 function loadSession() {
@@ -72,8 +88,10 @@ function pushReportEntry(item, phase, ms) {
 
 /* ---------- 오디오 (합성음만 — 외부 자산 없음) ---------- */
 let actx = null;
+let muted = false;
 function audio() { if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)(); return actx; }
 function tone(freq, dur = 0.15, type = 'sine', gain = 0.12, delay = 0) {
+  if (muted) return;
   const a = audio();
   const o = a.createOscillator(), g = a.createGain();
   o.type = type; o.frequency.value = freq;
@@ -96,7 +114,11 @@ const sfx = {
 /* ---------- 렌더러 ---------- */
 const renderer = new THREE.WebGLRenderer({ canvas: glcanvas, alpha: true, antialias: true });
 renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
-function stageAspect() { return stage.clientWidth / stage.clientHeight; }
+function stageAspect() {
+  // 레이아웃 전환 순간 크기가 0이면 NaN이 지오메트리로 번짐 — 16:9 폴백으로 차단
+  const w = stage.clientWidth, h = stage.clientHeight;
+  return (w > 0 && h > 0) ? w / h : 16 / 9;
+}
 function resize() {
   renderer.setSize(stage.clientWidth, stage.clientHeight, false);
   navCam.aspect = stageAspect(); navCam.updateProjectionMatrix();
@@ -154,9 +176,19 @@ function buildNavCourse(segment) {
       const alt = (Math.floor(z / 4) + (side > 0 ? 1 : 0)) % 2 === 0;
       let prop;
       if (theme.trees && alt) {
-        prop = new THREE.Mesh(new THREE.ConeGeometry(0.8, 2.4, 8),
-          new THREE.MeshStandardMaterial({ color: theme.propB }));
-        prop.position.set(side * (4.5 + (z % 3) * 0.4), 1.2, -z);
+        // 복셀 나무: 줄기 블록 + 잎 블록
+        prop = new THREE.Group();
+        const trunk = new THREE.Mesh(new THREE.BoxGeometry(0.5, 1.3, 0.5),
+          new THREE.MeshStandardMaterial({ color: '#6f4527', flatShading: true }));
+        trunk.position.y = 0.65;
+        const leaf = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.2, 1.5),
+          new THREE.MeshStandardMaterial({ color: theme.propB, flatShading: true }));
+        leaf.position.y = 1.85;
+        const leafTop = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.55, 0.9),
+          new THREE.MeshStandardMaterial({ color: theme.propB, flatShading: true }));
+        leafTop.position.y = 2.7;
+        prop.add(trunk, leaf, leafTop);
+        prop.position.set(side * (4.5 + (z % 3) * 0.4), 0, -z);
       } else {
         const tall = !theme.trees; // 실내 테마는 키 큰 선반·사물함 느낌
         prop = new THREE.Mesh(new THREE.BoxGeometry(1.2, tall ? 2.6 : 1.6, 1.2),
@@ -180,18 +212,22 @@ function buildNavCourse(segment) {
 }
 
 function buildAvatar() {
+  // 블록형 아바타 (복셀 원리 — 특정 게임 캐릭터 비복제). userData.armL/armR 계약 유지.
   const g = new THREE.Group();
-  const skin = new THREE.MeshStandardMaterial({ color: '#4fd1c5' });
-  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.35, 0.7, 4, 12), skin);
-  body.position.y = 0.9;
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.28, 16, 12),
-    new THREE.MeshStandardMaterial({ color: '#fbd38d' }));
-  head.position.y = 1.75;
-  const armMat = new THREE.MeshStandardMaterial({ color: '#38a89d' });
-  const armL = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, 0.5, 4, 8), armMat);
+  const box = (w, h, d, c) =>
+    new THREE.Mesh(new THREE.BoxGeometry(w, h, d),
+      new THREE.MeshStandardMaterial({ color: c, flatShading: true }));
+  const body = box(0.62, 0.78, 0.34, '#3f8f7c');
+  body.position.y = 0.95;
+  const head = box(0.46, 0.46, 0.46, '#e4b183');
+  head.position.y = 1.62;
+  const legL = box(0.24, 0.56, 0.3, '#3b5d8f');
+  const legR = legL.clone();
+  legL.position.set(-0.16, 0.28, 0); legR.position.set(0.16, 0.28, 0);
+  const armL = box(0.18, 0.6, 0.24, '#357a6a');
   const armR = armL.clone();
-  armL.position.set(-0.5, 1.1, 0); armR.position.set(0.5, 1.1, 0);
-  g.add(body, head, armL, armR);
+  armL.position.set(-0.46, 1.05, 0); armR.position.set(0.46, 1.05, 0);
+  g.add(body, head, legL, legR, armL, armR);
   g.userData = { armL, armR };
   return g;
 }
@@ -211,14 +247,27 @@ stCam.position.z = 3;
 function toWorld(nx, ny) { return { x: nx, y: -ny / stageAspect() }; }
 
 function makeHandCursor() {
-  const ring = new THREE.Mesh(
-    new THREE.TorusGeometry(0.028, 0.006, 8, 24),
-    new THREE.MeshBasicMaterial({ color: '#e7e9ee' })
-  );
-  ring.position.z = 0.5;
-  ring.visible = false;
-  stScene.add(ring);
-  return ring;
+  // 복셀 커서: 정사각 브래킷 외곽선 — 표시 전용 (좌표·판정 로직 무관)
+  const mat = new THREE.MeshBasicMaterial({ color: '#e7e9ee' });
+  const g = new THREE.Group();
+  const S = 0.056, T = 0.009, L = 0.022; // 크기·두께·모서리 길이
+  const bar = (w, h, x, y) => {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
+    m.position.set(x, y, 0);
+    g.add(m);
+  };
+  const e = S / 2;
+  // 네 모서리 브래킷 (조준 레티클풍)
+  [[-1, 1], [1, 1], [-1, -1], [1, -1]].forEach(([sx, sy]) => {
+    bar(L, T, sx * (e - L / 2), sy * e);        // 가로 조각
+    bar(T, L, sx * e, sy * (e - L / 2));        // 세로 조각
+  });
+  bar(T * 1.4, T * 1.4, 0, 0);                  // 중심 픽셀 도트
+  g.material = mat; // 기존 인터페이스 유지: cursors[k].material.color
+  g.position.z = 0.5;
+  g.visible = false;
+  stScene.add(g);
+  return g;
 }
 const cursors = { L: makeHandCursor(), R: makeHandCursor() };
 const CLS_COLORS = { OPEN: 0x68d391, FIST: 0xfc8181, NEUTRAL: 0xe7e9ee };
@@ -269,6 +318,7 @@ class NavPhase {
     this.metrics = { strokes: 0 };
     avatar.position.set(0, 0, 0);
     hudStep.textContent = '';
+    setHotbar(null);
     videoWrap.classList.add('hidden'); // 렌더링만 토글 — 스트림은 유지 (브리프 A7)
     hudInstruction.textContent =
       segment.theme === 'elevator' ? '🛗 엘리베이터를 타고 내려가요'
@@ -415,6 +465,7 @@ class CrossingPhase {
     this._curbArriveT = null; this._crossStartT = null; this._crossEndT = null;
     avatar.position.set(0, 0, 0);
     hudStep.textContent = '';
+    setHotbar(null);
     videoWrap.classList.add('hidden');
   }
 
@@ -568,38 +619,50 @@ function applyPlaceDecor(root, station) {
 }
 
 /* ---------- 라벨·카드 텍스처 (외부 자산 없음 — 캔버스 합성) ---------- */
-function makeLabelSprite(text, { fg = '#08201d', bg = '#ffffffee' } = {}) {
+function makeLabelSprite(text, { fg = '#232323', bg = '#f4f4f4' } = {}) {
+  // 픽셀 가격표: 직각 + 하드보더
   const cv = document.createElement('canvas');
   cv.width = 256; cv.height = 96;
   const x = cv.getContext('2d');
+  x.fillStyle = '#121212';
+  x.fillRect(0, 0, 256, 96);           // 외곽 하드보더
   x.fillStyle = bg;
-  x.beginPath(); x.roundRect(4, 4, 248, 88, 24); x.fill();
+  x.fillRect(8, 8, 240, 74);           // 면
+  x.fillStyle = 'rgba(0,0,0,.25)';
+  x.fillRect(8, 70, 240, 12);          // 하단 음영 (블록 두께감)
   x.fillStyle = fg;
-  x.font = 'bold 44px -apple-system, "Malgun Gothic", sans-serif';
+  x.font = 'bold 42px "DungGeunMo", "Malgun Gothic", monospace';
   x.textAlign = 'center'; x.textBaseline = 'middle';
-  x.fillText(text, 128, 52);
+  x.fillText(text, 128, 46);
   const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cv), depthTest: false }));
   sp.scale.set(0.09, 0.034, 1);
   return sp;
 }
 
 function makeCardTexture(opt, state = 'idle') {
+  // 복셀 선택 카드: 직각·이중 하드보더·상태색 (판정 로직 무관 — 텍스처 전용)
   const cv = document.createElement('canvas');
   cv.width = 256; cv.height = 320;
   const x = cv.getContext('2d');
-  const bg = state === 'correct' ? '#2f6b4f' : state === 'wrong' ? '#6b2f2f' : '#242938';
-  x.fillStyle = bg;
-  x.beginPath(); x.roundRect(6, 6, 244, 308, 26); x.fill();
-  x.strokeStyle = state === 'assist' ? '#4fd1c5' : '#3a4154';
-  x.lineWidth = state === 'assist' ? 10 : 5;
-  x.beginPath(); x.roundRect(6, 6, 244, 308, 26); x.stroke();
+  const face = state === 'correct' ? '#3d7a34' : state === 'wrong' ? '#8a3438' : '#3a3a3a';
+  const edge = state === 'assist' ? '#ffd83d' : '#121212';
+  x.fillStyle = edge;
+  x.fillRect(0, 0, 256, 320);                    // 외곽 보더
+  x.fillStyle = face;
+  x.fillRect(10, 10, 236, 300);                  // 면
+  x.fillStyle = 'rgba(255,255,255,.14)';
+  x.fillRect(10, 10, 236, 14);                   // 상단 하이라이트
+  x.fillStyle = 'rgba(0,0,0,.30)';
+  x.fillRect(10, 288, 236, 22);                  // 하단 음영
   x.textAlign = 'center'; x.textBaseline = 'middle';
-  x.font = '110px sans-serif';
-  x.fillText(opt.emoji || '▫️', 128, 120);
-  x.fillStyle = '#e7e9ee';
+  x.font = '104px sans-serif';
+  x.fillText(opt.emoji || '▫️', 128, 118);
+  x.fillStyle = '#f4f4f4';
   const label = opt.label || '';
-  x.font = `bold ${label.length > 5 ? 40 : 52}px -apple-system, "Malgun Gothic", sans-serif`;
-  x.fillText(label, 128, 245);
+  x.font = `${label.length > 5 ? 38 : 50}px "DungGeunMo", "Malgun Gothic", monospace`;
+  x.shadowColor = 'rgba(0,0,0,.6)'; x.shadowOffsetX = 3; x.shadowOffsetY = 3;
+  x.fillText(label, 128, 244);
+  x.shadowColor = 'transparent';
   return new THREE.CanvasTexture(cv);
 }
 
@@ -632,6 +695,12 @@ class SelectPhase {
     hudInstruction.textContent = step.prompt;
     hudStep.textContent = `${this.stepIdx + 1} / ${this.station.steps.length}`;
     hudProgressFill.style.width = `${this.stepIdx / this.station.steps.length * 100}%`;
+    // 핫바: 스텝 슬롯 (현재 스텝 하이라이트 — 정답 이모지는 완료된 스텝만 공개)
+    setHotbar(this.station.steps.map((s, i) => ({
+      icon: i < this.stepIdx ? (s.options?.find(o => o.correct)?.emoji || '✔') : '❓',
+      done: i < this.stepIdx,
+      active: i === this.stepIdx,
+    })));
     const n = step.options.length;
     const W = 0.17, H = 0.21; // 월드(x-정규화) 단위 카드 크기
     const h = 1 / stageAspect();
@@ -770,6 +839,7 @@ class SelectPhase {
     assistBadge.classList.add('hidden');
     placeChip.classList.add('hidden');
     videoWrap.style.background = '';
+    setHotbar(null);
   }
 }
 
@@ -850,6 +920,11 @@ class StationPhase {
     if (this.budget) txt += ` · 💰 ${this.spentBudget().toLocaleString()} / ${this.budget.toLocaleString()}원`;
     hudStep.textContent = txt;
     hudProgressFill.style.width = `${need ? Math.min(1, placed / need) * 100 : 100}%`;
+    // 핫바: 목표 사물 슬롯 (방해 자극 제외)
+    setHotbar(this.items.filter(i => !i.def.distractor).map(i => ({
+      icon: libMeta(i.def.lib, session.assets).emoji,
+      done: i.state === 'placed',
+    })));
   }
 
   radiusScale() { return this.assistLevel >= 1 ? PARAMS.ASSIST_SCALE : 1; }
@@ -1104,6 +1179,7 @@ class StationPhase {
     assistBadge.classList.add('hidden');
     placeChip.classList.add('hidden');
     videoWrap.style.background = '';
+    setHotbar(null);
   }
 }
 
@@ -1233,6 +1309,10 @@ function scheduleFrame(fn) {
   else requestAnimationFrame(fn);
 }
 
+/* 추적 소실 표시 — 거울 조작 과제에서 손이 안 보이면 명확히 알림 (접근성) */
+const trackLostEl = document.getElementById('trackLost');
+let handLostSince = 0;
+
 function loop() {
   scheduleFrame(loop);
   const now = performance.now();
@@ -1244,10 +1324,36 @@ function loop() {
     current.update(input, dt);
     current.render();
   }
+  // 손 미검출 안내 (웹캠 모드 + 거울 조작 과제에서만)
+  const mirrorTask = current && (current instanceof StationPhase || current instanceof SelectPhase);
+  if (driver.needsCamera && mirrorTask && !current.done) {
+    const anyHand = input.hands.L.present || input.hands.R.present;
+    if (!anyHand) {
+      if (!handLostSince) handLostSince = now;
+      if (now - handLostSince > 1200) trackLostEl.classList.remove('hidden');
+    } else {
+      handLostSince = 0;
+      trackLostEl.classList.add('hidden');
+    }
+  } else {
+    handLostSince = 0;
+    trackLostEl.classList.add('hidden');
+  }
   const fps = 1 / Math.max(1e-4, dt);
   fpsHist.push(fps); if (fpsHist.length > 40) fpsHist.shift();
   fpsBadge.textContent = `FPS ${(fpsHist.reduce((s, v) => s + v, 0) / fpsHist.length).toFixed(0)}`;
 }
+
+/* 음소거 토글 (버튼 · M 키) */
+const btnMute = document.getElementById('btnMute');
+function setMuted(v) {
+  muted = v;
+  btnMute.textContent = muted ? '🔇' : '🔊';
+}
+btnMute.addEventListener('click', () => setMuted(!muted));
+window.addEventListener('keydown', e => {
+  if (e.key.toLowerCase() === 'm' && !e.repeat) setMuted(!muted);
+});
 
 /* ---------- 드라이버 초기화 · 캘리브레이션 (전체·개별 공용) ---------- */
 const isMouseMode = () => new URLSearchParams(location.search).get('input') === 'mouse';
@@ -1255,6 +1361,17 @@ const isMouseMode = () => new URLSearchParams(location.search).get('input') === 
 function hideMenus() {
   startOverlay.classList.add('hidden');
   stageMenu.classList.add('hidden');
+}
+
+/* 복셀 로딩 화면 — 실제 초기화 단계를 표시 (스피너 없음) */
+const loadingOverlay = document.getElementById('loadingOverlay');
+function setLoadStage(stage) {
+  const steps = { camera: 33, model: 66, ready: 100 };
+  document.getElementById('loadFill').style.width = `${steps[stage] || 0}%`;
+  const mark = (id, cls) => { const el = document.getElementById(id); el.className = cls; };
+  mark('loadCam', stage === 'camera' ? 'on' : 'ok');
+  mark('loadModel', stage === 'camera' ? '' : stage === 'model' ? 'on' : 'ok');
+  mark('loadReady', stage === 'ready' ? 'ok' : '');
 }
 
 async function ensureDriver({ needCalib = true } = {}) {
@@ -1265,11 +1382,19 @@ async function ensureDriver({ needCalib = true } = {}) {
       await driver.start(stage);
       calibrated = true;
     } else {
-      const { HandDriver } = await import('./input-hand.js');
-      driver = new HandDriver();
-      await driver.start();
-      driver.videoEl.classList.add('mirror'); // 거울 영상 배경 연결
-      videoWrap.appendChild(driver.videoEl);
+      hideMenus();
+      loadingOverlay.classList.remove('hidden');
+      try {
+        const { HandDriver } = await import('./input-hand.js');
+        driver = new HandDriver();
+        await driver.start(setLoadStage);
+        setLoadStage('ready');
+        driver.videoEl.classList.add('mirror'); // 거울 영상 배경 연결
+        videoWrap.appendChild(driver.videoEl);
+        await new Promise(r => setTimeout(r, 400)); // READY 표시 잠깐 노출
+      } finally {
+        loadingOverlay.classList.add('hidden');
+      }
     }
   }
   if (driver.needsCamera && needCalib && !calibrated) await runCalibration();
@@ -1414,4 +1539,5 @@ resize();
 loop();
 
 /* 개발 진단 훅 (콘솔 전용 — 게임 로직 비관여) */
-window.__dbg = { get driver() { return driver; }, get current() { return current; }, get session() { return session; } };
+window.__dbg = { get driver() { return driver; }, get current() { return current; }, get session() { return session; },
+  navScene, stScene, renderer };

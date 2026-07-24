@@ -4,30 +4,41 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>I Can Do ADL — 웹캠 일상생활 훈련</title>
+<link rel="stylesheet" href="./styles/voxel-ui.css">
 <style>
-  :root{ --bg:#0f1115; --panel:#181b22; --line:#2b303c; --text:#e7e9ee; --muted:#8b93a7; --accent:#4fd1c5; }
   *{box-sizing:border-box;}
-  html,body{margin:0; min-height:100%; background:var(--bg); color:var(--text);
-    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Malgun Gothic",sans-serif;}
-  body{display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:100vh; padding:24px; gap:8px;}
-  h1{font-size:30px; margin:0; text-align:center;}
-  .tag{font-size:14px; color:var(--muted); margin:0 0 20px; text-align:center; max-width:560px; line-height:1.6;}
-  .cards{display:flex; gap:16px; flex-wrap:wrap; justify-content:center;}
-  a.card{display:flex; flex-direction:column; gap:8px; width:240px; text-decoration:none; color:var(--text);
-    background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:22px; transition:border-color .15s, transform .1s;}
-  a.card:hover{border-color:var(--accent); transform:translateY(-3px);}
-  a.card .emoji{font-size:40px;}
-  a.card .t{font-size:19px; font-weight:700;}
-  a.card .d{font-size:13px; color:var(--muted); line-height:1.5;}
-  .foot{font-size:12px; color:var(--muted); margin-top:24px; text-align:center; line-height:1.7;}
-  .cog{display:inline-block; font-size:11px; color:var(--accent); border:1px solid var(--line);
-    border-radius:999px; padding:2px 9px; margin:2px;}
+  html,body{margin:0; min-height:100%; background:
+    repeating-linear-gradient(0deg, rgba(255,255,255,.015) 0 2px, transparent 2px 4px),
+    #1c1c1c;
+    color:var(--text); font-family:var(--font-body);}
+  body{display:flex; flex-direction:column; align-items:center; justify-content:center;
+    min-height:100vh; padding:24px; gap:10px;}
+  h1{font-family:var(--font-display); font-size:36px; margin:0; text-align:center;
+    text-shadow:4px 4px 0 rgba(0,0,0,.7); letter-spacing:1px;}
+  h1 .grass{color:var(--grass);}
+  .tag{font-size:14px; color:var(--muted); margin:0 0 22px; text-align:center; max-width:560px; line-height:1.7;}
+  .cards{display:flex; gap:18px; flex-wrap:wrap; justify-content:center;}
+  a.card{display:flex; flex-direction:column; gap:9px; width:250px; text-decoration:none; color:var(--text);
+    background:var(--ui-bg2); border:3px solid var(--ui-border); border-radius:0;
+    box-shadow:0 var(--px) 0 var(--ui-border), inset 0 3px 0 rgba(255,255,255,.08);
+    padding:22px; user-select:none;}
+  a.card:hover{outline:3px solid var(--ui-highlight); outline-offset:-1px; filter:brightness(1.1);}
+  a.card:active{transform:translateY(var(--px)); box-shadow:0 0 0 var(--ui-border);}
+  a.card .emoji{font-size:42px; filter:drop-shadow(3px 3px 0 rgba(0,0,0,.5));}
+  a.card .t{font-size:19px; font-family:var(--font-display); text-shadow:2px 2px 0 rgba(0,0,0,.5);}
+  a.card .d{font-size:13px; color:var(--muted); line-height:1.6;}
+  .privacy{font-size:12px; color:var(--muted); line-height:1.7; text-align:center;
+    border:2px solid var(--ui-border); background:rgba(0,0,0,.35);
+    box-shadow:0 3px 0 var(--ui-border); padding:9px 16px; margin-top:20px;}
+  .foot{font-size:12px; color:var(--muted); margin-top:12px; text-align:center; line-height:1.9;}
+  code{font-family:var(--font-display); background:rgba(0,0,0,.4); border:2px solid var(--ui-border);
+    padding:1px 6px; font-size:11px;}
 </style>
 </head>
 <body>
-  <h1>🖐️ I Can Do ADL</h1>
-  <p class="tag">웹캠으로 손과 몸을 움직여 일상생활(ADL)을 연습하는 아동 작업치료 도구.<br>
-    영상은 기기 밖으로 나가지 않아요 (온디바이스 처리).</p>
+  <h1>🖐️ I CAN DO <span class="grass">ADL</span></h1>
+  <p class="tag">웹캠으로 손과 몸을 움직여 일상생활(ADL)을 연습하는 아동 작업치료 게임.<br>
+    내 손이 게임 컨트롤러가 돼요.</p>
   <div class="cards">
     <a class="card" href="./runner.html">
       <span class="emoji">🎮</span>
@@ -40,9 +51,14 @@
       <span class="d">코드 없이 아동별 훈련 세션을 저작하고 실행 링크를 만들어요.</span>
     </a>
   </div>
+  <p class="privacy">🎥 이 게임은 손 움직임을 인식하기 위해 카메라를 사용해요.<br>
+    영상은 브라우저 안에서만 처리되고, 저장·전송되지 않아요.</p>
   <div class="foot">
-    훈련 인지영역
-    <span class="cog">주의·집중</span><span class="cog">작업기억</span><span class="cog">충동 억제</span><span class="cog">인과 추론</span>
+    훈련 인지영역:
+    <span class="vx-chip">주의·집중</span>
+    <span class="vx-chip">작업기억</span>
+    <span class="vx-chip">충동 억제</span>
+    <span class="vx-chip">인과 추론</span>
     <br>웹캠 없이 둘러보려면 러너 주소 뒤에 <code>?input=mouse</code> 를 붙이세요.
   </div>
 </body>

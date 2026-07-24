@@ -1,0 +1,154 @@
+/* ============================================================
+   Voxel Design System — I Can Do ADL
+   Minecraft의 디자인 "원리"만 차용 (블록·픽셀·하드섀도·슬롯).
+   실제 텍스처·색상값·리소스는 복제하지 않음 — 독자 팔레트.
+   게임 로직·MediaPipe 계층과 무관한 Presentation 전용.
+   ============================================================ */
+
+/* 한글 픽셀 폰트 (둥근모꼴 — 오픈 라이선스) */
+@font-face {
+  font-family: 'DungGeunMo';
+  src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2107@1.1/DungGeunMo.woff') format('woff');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  /* Voxel World Palette (자연 기반 — 독자 값) */
+  --grass: #6abe4b;
+  --grass-dk: #479031;
+  --dirt: #96603a;
+  --dirt-dk: #6f4527;
+  --stone: #9a9a9a;
+  --stone-dk: #6c6c6c;
+  --sand: #dfc893;
+  --wood: #7d5433;
+  --sky: #7fb2e5;
+  --sky-dusk: #33415e;
+  --leaf: #4f9440;
+  --water: #3f76c9;
+
+  /* UI */
+  --ui-bg: #262626;
+  --ui-bg2: #333333;
+  --ui-face: #b9b9b9;
+  --ui-face-dk: #7d7d7d;
+  --ui-border: #121212;
+  --ui-inset-lt: rgba(255, 255, 255, .30);
+  --ui-inset-dk: rgba(0, 0, 0, .38);
+  --ui-highlight: #ffd83d;
+  --accent: #6abe4b;
+  --danger: #d95763;
+  --warn: #e8a33d;
+  --info: #6fb7ff;
+  --text: #f4f4f4;
+  --muted: #b3b3b3;
+  --text-dark: #232323;
+
+  --px: 4px; /* 픽셀 하드섀도 단위 */
+  --font-display: 'DungGeunMo', 'Courier New', monospace;
+  --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", "Malgun Gothic", sans-serif;
+}
+
+/* ---------- Voxel Button ----------
+   납작한 면 + 상단 하이라이트/하단 음영 인셋 + 아래 하드섀도.
+   :active 시 실제로 눌리는 이동 피드백. */
+.vx-btn {
+  font-family: var(--font-display);
+  font-size: 18px;
+  color: #fff;
+  text-shadow: 2px 2px 0 rgba(0, 0, 0, .55);
+  background: var(--ui-face-dk);
+  border: 3px solid var(--ui-border);
+  border-radius: 0;
+  box-shadow:
+    inset 0 3px 0 var(--ui-inset-lt),
+    inset 0 -4px 0 var(--ui-inset-dk),
+    0 var(--px) 0 var(--ui-border);
+  padding: 12px 26px;
+  cursor: pointer;
+  user-select: none;
+}
+.vx-btn:hover { filter: brightness(1.13); outline: 3px solid var(--ui-highlight); outline-offset: -1px; }
+.vx-btn:active {
+  transform: translateY(var(--px));
+  box-shadow:
+    inset 0 3px 0 var(--ui-inset-lt),
+    inset 0 -2px 0 var(--ui-inset-dk),
+    0 0 0 var(--ui-border);
+}
+.vx-btn:disabled { opacity: .45; cursor: not-allowed; filter: none; outline: none; }
+.vx-btn.primary { background: var(--grass); }
+.vx-btn.warn { background: var(--warn); color: var(--text-dark); text-shadow: none; }
+.vx-btn.small { font-size: 13px; padding: 8px 14px; box-shadow: inset 0 2px 0 var(--ui-inset-lt), inset 0 -3px 0 var(--ui-inset-dk), 0 3px 0 var(--ui-border); }
+
+/* ---------- Voxel Panel ---------- */
+.vx-panel {
+  background: var(--ui-bg);
+  border: 3px solid var(--ui-border);
+  border-radius: 0;
+  box-shadow: 0 var(--px) 0 var(--ui-border), inset 0 3px 0 rgba(255, 255, 255, .07);
+}
+
+/* ---------- Voxel Slot (핫바·인벤토리형) ----------
+   어두운 상·좌 / 밝은 하·우 베벨 = 파인 슬롯 느낌 */
+.vx-slot {
+  position: relative;
+  width: 54px;
+  height: 54px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 10, 10, .62);
+  border: 3px solid;
+  border-color: #101010 #7c7c7c #7c7c7c #101010;
+  font-size: 26px;
+  line-height: 1;
+}
+.vx-slot.active { outline: 3px solid var(--ui-highlight); outline-offset: 0; }
+.vx-slot.done { filter: saturate(.4) brightness(.75); }
+.vx-slot .chk {
+  position: absolute; right: 1px; bottom: -2px;
+  font-size: 18px; color: var(--ui-highlight);
+  font-family: var(--font-display);
+  text-shadow: 2px 2px 0 rgba(0, 0, 0, .8);
+}
+.vx-slot .num {
+  position: absolute; left: 2px; top: 0;
+  font-size: 11px; color: var(--muted);
+  font-family: var(--font-display);
+}
+
+/* ---------- Voxel Progress (블록 세그먼트 게이지) ---------- */
+.vx-progress {
+  height: 16px;
+  background: rgba(0, 0, 0, .6);
+  border: 3px solid var(--ui-border);
+  box-shadow: 0 3px 0 var(--ui-border);
+  overflow: hidden;
+}
+.vx-progress > div {
+  height: 100%;
+  width: 0%;
+  transition: width .2s steps(6);
+  background: repeating-linear-gradient(90deg,
+    var(--grass) 0 12px,
+    var(--grass-dk) 12px 15px);
+}
+
+/* ---------- Voxel Chip / Badge ---------- */
+.vx-chip {
+  display: inline-block;
+  font-family: var(--font-display);
+  font-size: 12px;
+  color: var(--text);
+  background: var(--ui-bg2);
+  border: 2px solid var(--ui-border);
+  box-shadow: 0 2px 0 var(--ui-border);
+  padding: 3px 9px;
+}
+
+/* ---------- 공통 텍스트 ---------- */
+.pixel { font-family: var(--font-display); }
+.body-text { font-family: var(--font-body); }

@@ -3,102 +3,165 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ADL 러너 — 3D 훈련 세션</title>
+<title>I Can Do ADL — 러너</title>
+<link rel="stylesheet" href="./styles/voxel-ui.css">
 <style>
-  :root{
-    --bg:#0f1115; --panel:rgba(24,27,34,.82); --line:#2b303c;
-    --text:#e7e9ee; --muted:#8b93a7; --accent:#4fd1c5; --warn:#f6ad55;
-  }
+  /* ---- 페이지 전용 (Voxel Design System 위에 구성) ---- */
   *{box-sizing:border-box;}
-  html,body{margin:0; height:100%; background:var(--bg); color:var(--text);
-    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Malgun Gothic",sans-serif; overflow:hidden;}
+  html,body{margin:0; height:100%; background:var(--ui-bg); color:var(--text);
+    font-family:var(--font-body); overflow:hidden;}
   #stage{position:fixed; inset:0;}
-  #videoWrap{position:absolute; inset:0; background:linear-gradient(160deg,#1a2436,#12305a);}
+  #videoWrap{position:absolute; inset:0; background:linear-gradient(180deg,var(--sky-dusk),#1b2333);}
   #videoWrap video{width:100%; height:100%; object-fit:cover; filter:brightness(.85);}
   #videoWrap video.mirror{transform:scaleX(-1);}
   #glcanvas{position:absolute; inset:0; width:100%; height:100%; display:block;}
   .hidden{display:none !important;}
 
+  /* ---- 오버레이 공통: 게임 타이틀 스크린 톤 ---- */
   .overlay{
-    position:absolute; inset:0; z-index:20; background:rgba(10,12,16,.9);
+    position:absolute; inset:0; z-index:20;
+    background:
+      repeating-linear-gradient(0deg, rgba(255,255,255,.015) 0 2px, transparent 2px 4px),
+      #1c1c1c;
     display:flex; flex-direction:column; align-items:center; justify-content:center;
-    text-align:center; padding:24px; gap:14px;
+    text-align:center; padding:24px; gap:16px;
   }
-  .overlay h1{font-size:30px; margin:0;}
-  .overlay p{font-size:15px; color:var(--muted); max-width:520px; margin:0; line-height:1.6;}
-  .overlay .count{font-size:64px; font-weight:800; color:var(--accent); min-height:76px;}
-  button.big{
-    font-family:inherit; font-size:20px; font-weight:700; padding:16px 44px; border-radius:16px;
-    border:none; background:var(--accent); color:#08201d; cursor:pointer;
-  }
-  button.big:disabled{opacity:.5; cursor:not-allowed;}
-  button.big.ghost{background:var(--panel); color:var(--text); border:1px solid var(--accent);}
-  .startBtns{display:flex; gap:12px; flex-wrap:wrap; justify-content:center;}
+  .overlay h1{font-family:var(--font-display); font-size:34px; margin:0; letter-spacing:1px;
+    text-shadow:3px 3px 0 rgba(0,0,0,.7);}
+  .overlay p{font-size:15px; color:var(--muted); max-width:540px; margin:0; line-height:1.6;}
+  .overlay .count{font-family:var(--font-display); font-size:72px; color:var(--ui-highlight);
+    min-height:84px; text-shadow:4px 4px 0 rgba(0,0,0,.7);}
+  .privacy{font-family:var(--font-body); font-size:12px; color:var(--muted); line-height:1.6;
+    border:2px solid var(--ui-border); background:rgba(0,0,0,.35); padding:8px 14px; box-shadow:0 3px 0 var(--ui-border);}
 
-  /* 과제 선택 메뉴 */
+  /* 시작 버튼 (기존 클래스 유지, 복셀화) */
+  button.big{
+    font-family:var(--font-display); font-size:20px; color:#fff;
+    text-shadow:2px 2px 0 rgba(0,0,0,.55);
+    background:var(--grass); border:3px solid var(--ui-border); border-radius:0;
+    box-shadow:inset 0 3px 0 var(--ui-inset-lt), inset 0 -4px 0 var(--ui-inset-dk), 0 var(--px) 0 var(--ui-border);
+    padding:16px 36px; cursor:pointer; user-select:none;
+  }
+  button.big:hover{filter:brightness(1.13); outline:3px solid var(--ui-highlight); outline-offset:-1px;}
+  button.big:active{transform:translateY(var(--px));
+    box-shadow:inset 0 3px 0 var(--ui-inset-lt), inset 0 -2px 0 var(--ui-inset-dk), 0 0 0 var(--ui-border);}
+  button.big:disabled{opacity:.45; cursor:not-allowed; filter:none; outline:none;}
+  button.big.ghost{background:var(--ui-face-dk);}
+  .startBtns{display:flex; gap:14px; flex-wrap:wrap; justify-content:center;}
+
+  .fileOpen{font-family:var(--font-body); font-size:13px; color:var(--muted); cursor:pointer;
+    border:2px solid var(--ui-border); padding:8px 16px; background:var(--ui-bg2);
+    box-shadow:0 3px 0 var(--ui-border);}
+  .fileOpen:hover{color:var(--text); outline:2px solid var(--ui-highlight); outline-offset:-1px;}
+  .fileOpen input{display:none;}
+
+  /* ---- 과제 선택 메뉴 ---- */
   #stageMenu{justify-content:flex-start; padding-top:5vh;}
   #stageMenu h1{font-size:26px;}
-  .menuHint{font-size:14px; color:var(--muted);}
-  .menuBack{position:absolute; top:18px; left:18px; font-family:inherit; font-size:14px; font-weight:600;
-    background:var(--panel); color:var(--text); border:1px solid var(--line); border-radius:10px;
-    padding:8px 14px; cursor:pointer;}
-  .menuBack:hover{border-color:var(--accent);}
-  #stageToast{font-size:17px; font-weight:800; color:var(--accent);
-    background:rgba(79,209,197,.12); border:1px solid var(--accent); border-radius:12px; padding:8px 20px;}
-  #stageGrid{display:grid; grid-template-columns:repeat(auto-fill, minmax(180px, 1fr));
-    gap:12px; width:min(880px, 92vw); max-height:74vh; overflow-y:auto; padding:4px;}
+  .menuHint{font-size:14px; color:var(--muted); font-family:var(--font-body);}
+  .menuBack{position:absolute; top:18px; left:18px; font-family:var(--font-display); font-size:14px;
+    background:var(--ui-face-dk); color:#fff; border:3px solid var(--ui-border); text-shadow:2px 2px 0 rgba(0,0,0,.5);
+    box-shadow:0 3px 0 var(--ui-border); padding:8px 14px; cursor:pointer;}
+  .menuBack:hover{outline:3px solid var(--ui-highlight); outline-offset:-1px;}
+  .menuBack:active{transform:translateY(3px); box-shadow:0 0 0 var(--ui-border);}
+  #stageToast{font-family:var(--font-display); font-size:17px; color:var(--ui-highlight);
+    background:rgba(0,0,0,.5); border:3px solid var(--ui-highlight); padding:8px 20px;
+    text-shadow:2px 2px 0 rgba(0,0,0,.7); box-shadow:0 3px 0 var(--ui-border);}
+  #stageGrid{display:grid; grid-template-columns:repeat(auto-fill, minmax(184px, 1fr));
+    gap:14px; width:min(900px, 92vw); max-height:72vh; overflow-y:auto; padding:6px;}
   .stageCard{display:flex; flex-direction:column; gap:6px; text-align:left; cursor:pointer;
-    background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:14px;
-    transition:border-color .15s, transform .1s;}
-  .stageCard:hover{border-color:var(--accent); transform:translateY(-2px);}
-  .stageCard.calib{border-color:var(--warn); border-style:dashed;}
-  .stageCard.doneOnce{opacity:.75;}
+    background:var(--ui-bg2); border:3px solid var(--ui-border); border-radius:0;
+    box-shadow:0 var(--px) 0 var(--ui-border), inset 0 2px 0 rgba(255,255,255,.08);
+    padding:13px; color:var(--text); font-family:var(--font-body);}
+  .stageCard:hover{outline:3px solid var(--ui-highlight); outline-offset:-1px; filter:brightness(1.1);}
+  .stageCard:active{transform:translateY(3px); box-shadow:0 1px 0 var(--ui-border);}
+  .stageCard.calib{border-color:var(--warn);}
+  .stageCard.doneOnce{filter:saturate(.5) brightness(.8);}
   .stageCard .scTop{display:flex; align-items:center; gap:9px;}
-  .stageCard .scEmoji{font-size:30px; line-height:1;}
-  .stageCard .scTitle{font-size:15px; font-weight:700;}
-  .stageCard .scType{font-size:11px; color:var(--muted); font-weight:600;}
+  .stageCard .scEmoji{font-size:30px; line-height:1; filter:drop-shadow(2px 2px 0 rgba(0,0,0,.5));}
+  .stageCard .scTitle{font-size:14px; font-weight:700; font-family:var(--font-display);}
+  .stageCard .scType{font-size:11px; color:var(--muted);}
   .stageCard .scCog{display:flex; flex-wrap:wrap; gap:4px; margin-top:2px;}
-  .stageCard .cog{font-size:10px; font-weight:600; padding:2px 7px; border-radius:999px;
-    background:var(--panel2, #20242e); color:var(--muted); border:1px solid var(--line);}
-  .stageCard .scStars{font-size:12px; min-height:14px; color:var(--warn);}
-  .fileOpen{font-size:13px; color:var(--muted); cursor:pointer; border:1px solid var(--line);
-    padding:8px 16px; border-radius:10px; background:var(--panel);}
-  .fileOpen:hover{color:var(--text); border-color:var(--accent);}
-  .fileOpen input{display:none;}
-  #reportBox{max-width:640px; width:90%; max-height:34vh; overflow-y:auto; text-align:left;
-    background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:12px 16px;}
-  #reportBox h3{font-size:13px; margin:0 0 8px; color:var(--text);}
-  #reportBox .c2note{font-size:11px; color:var(--muted); font-weight:400;}
-  #reportBox .repRow{font-size:12px; color:var(--muted); padding:4px 0; border-top:1px solid var(--line); line-height:1.5;}
-  #reportBtns{display:flex; gap:8px;}
-  button.mini{font-family:inherit; font-size:12px; font-weight:600; padding:8px 14px; border-radius:8px;
-    border:1px solid var(--line); background:var(--panel); color:var(--text); cursor:pointer;}
-  button.mini:hover{border-color:var(--accent);}
+  .stageCard .cog{font-size:10px; font-weight:600; padding:2px 7px; color:var(--muted);
+    background:rgba(0,0,0,.4); border:2px solid var(--ui-border);}
+  .stageCard .scStars{font-size:12px; min-height:14px; color:var(--ui-highlight);}
 
-  #hud{position:absolute; top:0; left:0; right:0; z-index:10; padding:14px 18px;
+  /* ---- 리포트 ---- */
+  #reportBox{max-width:640px; width:90%; max-height:32vh; overflow-y:auto; text-align:left;
+    background:var(--ui-bg); border:3px solid var(--ui-border); box-shadow:0 var(--px) 0 var(--ui-border);
+    padding:12px 16px; font-family:var(--font-body);}
+  #reportBox h3{font-size:13px; margin:0 0 8px; color:var(--text); font-family:var(--font-display);}
+  #reportBox .c2note{font-size:11px; color:var(--muted); font-weight:400; font-family:var(--font-body);}
+  #reportBox .repRow{font-size:12px; color:var(--muted); padding:4px 0;
+    border-top:2px solid rgba(255,255,255,.06); line-height:1.5;}
+  #reportBtns{display:flex; gap:10px;}
+  button.mini{font-family:var(--font-display); font-size:12px; padding:8px 14px; color:var(--text);
+    border:3px solid var(--ui-border); background:var(--ui-bg2); cursor:pointer;
+    box-shadow:0 3px 0 var(--ui-border);}
+  button.mini:hover{outline:2px solid var(--ui-highlight); outline-offset:-1px;}
+  button.mini:active{transform:translateY(3px); box-shadow:0 0 0 var(--ui-border);}
+
+  /* ---- 게임 HUD ---- */
+  #hud{position:absolute; top:0; left:0; right:0; z-index:10; padding:12px 16px;
     display:flex; flex-direction:column; gap:8px; pointer-events:none;}
   #hudInstruction{
-    align-self:center; background:var(--panel); border:1px solid var(--line); backdrop-filter:blur(6px);
-    padding:10px 22px; border-radius:999px; font-size:19px; font-weight:700;
+    align-self:center; background:rgba(12,12,12,.78); border:3px solid var(--ui-border);
+    box-shadow:0 3px 0 var(--ui-border);
+    padding:9px 22px; font-size:18px; font-family:var(--font-display);
+    text-shadow:2px 2px 0 rgba(0,0,0,.6);
   }
-  #hudBar{align-self:center; width:min(420px,70vw); height:10px; border-radius:6px;
-    background:rgba(0,0,0,.45); overflow:hidden; border:1px solid var(--line);}
-  #hudProgressFill{height:100%; width:0%; background:var(--accent); border-radius:6px; transition:width .2s;}
-  #hudStep{align-self:center; font-size:13px; color:var(--muted); font-weight:600;}
+  #hudBar{align-self:center; width:min(420px,70vw); height:16px;
+    background:rgba(0,0,0,.6); border:3px solid var(--ui-border);
+    box-shadow:0 3px 0 var(--ui-border); overflow:hidden;}
+  #hudProgressFill{height:100%; width:0%; transition:width .2s;
+    background:repeating-linear-gradient(90deg, var(--grass) 0 12px, var(--grass-dk) 12px 15px);}
+  #hudStep{align-self:center; font-size:13px; color:var(--text); font-family:var(--font-display);
+    text-shadow:2px 2px 0 rgba(0,0,0,.7);}
 
-  #banner{position:absolute; top:38%; left:0; right:0; z-index:15; text-align:center;
-    font-size:46px; font-weight:800; text-shadow:0 4px 18px rgba(0,0,0,.6); pointer-events:none;}
-  #assistBadge{position:absolute; bottom:20px; left:50%; transform:translateX(-50%); z-index:10;
-    background:var(--warn); color:#3a2400; font-size:14px; font-weight:700;
-    padding:8px 18px; border-radius:999px; pointer-events:none;}
+  /* ---- 핫바 (스테이션 목표 / 고르기 스텝) ---- */
+  #hotbar{position:absolute; bottom:14px; left:50%; transform:translateX(-50%); z-index:10;
+    display:flex; gap:6px; pointer-events:none;
+    background:rgba(12,12,12,.5); padding:6px; border:3px solid var(--ui-border);
+    box-shadow:0 3px 0 var(--ui-border);}
+
+  #banner{position:absolute; top:36%; left:0; right:0; z-index:15; text-align:center;
+    font-family:var(--font-display); font-size:42px;
+    text-shadow:4px 4px 0 rgba(0,0,0,.75); pointer-events:none;}
+  #assistBadge{position:absolute; bottom:88px; left:50%; transform:translateX(-50%); z-index:10;
+    background:var(--warn); color:var(--text-dark); font-size:14px; font-family:var(--font-display);
+    padding:8px 18px; border:3px solid var(--ui-border); box-shadow:0 3px 0 var(--ui-border); pointer-events:none;}
+  #trackLost{position:absolute; top:34%; left:50%; transform:translateX(-50%); z-index:14;
+    background:rgba(12,12,12,.85); color:var(--text); text-align:center;
+    border:3px solid var(--danger); box-shadow:0 4px 0 var(--ui-border);
+    padding:14px 26px; pointer-events:none;}
+  #trackLost .tl1{font-family:var(--font-display); font-size:20px; color:var(--danger);
+    text-shadow:2px 2px 0 rgba(0,0,0,.6);}
+  #trackLost .tl2{font-size:13px; color:var(--muted); margin-top:4px; font-family:var(--font-body);}
+
   #fpsBadge{position:absolute; top:12px; right:14px; z-index:10; font-size:11px; color:var(--muted);
-    background:var(--panel); padding:3px 8px; border-radius:6px; border:1px solid var(--line);}
-  #placeChip{position:absolute; top:12px; left:14px; z-index:10; font-size:14px; font-weight:800;
-    color:#fff; padding:7px 16px; border-radius:999px; text-shadow:0 1px 3px rgba(0,0,0,.5);
-    box-shadow:0 3px 10px rgba(0,0,0,.35);}
-  #fade{position:absolute; inset:0; z-index:18; background:#0f1115; opacity:0;
+    background:rgba(12,12,12,.7); padding:4px 8px; border:2px solid var(--ui-border);
+    font-family:var(--font-display);}
+  #btnMute{position:absolute; top:8px; right:74px; z-index:10; width:34px; height:34px;
+    font-size:16px; background:rgba(12,12,12,.7); color:var(--text);
+    border:2px solid var(--ui-border); box-shadow:0 2px 0 var(--ui-border); cursor:pointer;}
+  #btnMute:active{transform:translateY(2px); box-shadow:0 0 0 var(--ui-border);}
+  #placeChip{position:absolute; top:12px; left:14px; z-index:10; font-size:14px;
+    font-family:var(--font-display); color:#fff; padding:7px 14px;
+    border:3px solid var(--ui-border); box-shadow:0 3px 0 var(--ui-border);
+    text-shadow:2px 2px 0 rgba(0,0,0,.6);}
+  #fade{position:absolute; inset:0; z-index:18; background:#141414; opacity:0;
     transition:opacity .4s; pointer-events:none;}
   #fade.on{opacity:1;}
+
+  /* ---- 로딩 (월드 생성풍) ---- */
+  #loadingOverlay .loadLines{display:flex; flex-direction:column; gap:6px; min-height:76px;
+    font-family:var(--font-display); font-size:15px; color:var(--muted); text-align:left;}
+  #loadingOverlay .loadLines .on{color:var(--text);}
+  #loadingOverlay .loadLines .ok{color:var(--grass);}
+  #loadBarWrap{width:min(380px,80vw); height:18px; background:rgba(0,0,0,.6);
+    border:3px solid var(--ui-border); box-shadow:0 3px 0 var(--ui-border); overflow:hidden;}
+  #loadFill{height:100%; width:0%; transition:width .3s steps(5);
+    background:repeating-linear-gradient(90deg, var(--grass) 0 14px, var(--grass-dk) 14px 17px);}
 </style>
 </head>
 <body>
@@ -112,20 +175,27 @@
     <div id="hudStep"></div>
   </div>
 
+  <div id="hotbar" class="hidden"></div>
   <div id="placeChip" class="hidden"></div>
   <div id="banner" class="hidden"></div>
   <div id="assistBadge" class="hidden"></div>
+  <div id="trackLost" class="hidden">
+    <div class="tl1">손이 안 보여요</div>
+    <div class="tl2">화면 안에 손을 보여 주세요</div>
+  </div>
+  <button id="btnMute" title="소리 켜기/끄기 (M)">🔊</button>
   <div id="fpsBadge">FPS —</div>
   <div id="fade"></div>
 
   <div id="startOverlay" class="overlay">
-    <h1 id="startTitle">ADL 훈련 세션</h1>
+    <h1 id="startTitle">I CAN DO ADL</h1>
     <p id="startDesc">불러오는 중…</p>
     <div class="startBtns">
       <button id="btnStart" class="big">🌟 전체 하루 시작</button>
       <button id="btnChoose" class="big ghost">🎯 과제 골라 연습</button>
     </div>
     <label id="btnOpenFile" class="fileOpen">📂 세션 파일 열기<input type="file" id="fileSession" accept=".json,application/json"></label>
+    <p class="privacy">🎥 이 게임은 손 움직임을 인식하기 위해 카메라를 사용해요.<br>영상은 브라우저 안에서만 처리되고, 저장·전송되지 않아요.</p>
     <div id="reportBox" class="hidden"></div>
     <div id="reportBtns" class="hidden">
       <button id="btnSaveJson" class="mini">📄 리포트 JSON</button>
@@ -139,6 +209,16 @@
     <p class="menuHint">연습하고 싶은 과제를 골라요. 하나를 끝내면 다시 여기로 돌아와요.</p>
     <div id="stageToast" class="hidden"></div>
     <div id="stageGrid"></div>
+  </div>
+
+  <div id="loadingOverlay" class="overlay hidden">
+    <h1>LOADING WORLD</h1>
+    <div class="loadLines">
+      <div id="loadCam">· INITIALIZING CAMERA — 카메라 켜는 중</div>
+      <div id="loadModel">· LOADING TRACKING MODEL — 손 인식 모델</div>
+      <div id="loadReady">· READY</div>
+    </div>
+    <div id="loadBarWrap"><div id="loadFill"></div></div>
   </div>
 
   <div id="calibOverlay" class="overlay hidden">
