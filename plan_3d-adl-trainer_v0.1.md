@@ -61,6 +61,7 @@ v1 단순화: 스테이션당 타깃 1개, 모든 아이템 → 동일 타깃 ("
 | M6.0 | 배포 | GitHub → Vercel → OTHub.kr 링크 | ✅ 라이브 (icandoadl.vercel.app) · 404 수정 완료 · OTHub 링크 대기 |
 | M6.1 | Voxel Sandbox 리디자인 | Presentation Layer 전환 (게임 로직·MediaPipe 보존) | ✅ 2026-07-24 |
 | M6.2 | 사물 34종 복셀화 | library-mesh.js 전체 BoxGeometry 재구성 | ✅ 2026-07-24 |
+| M6.3 | Scene 문법 MVP-A: 침실 | LivingScenePhase — 상태·파생 오브젝트·부분순서 실장 | ✅ 2026-07-24 |
 | M6 | Gate 2 (저작성 검증) | 미참여 치료사 1명, 무도움 30분 내 스테이션 2개 세션 저작→링크 실행 | 현장 |
 | M7 | 러너 검증 | 아동 1명 치료사 동석 세션 완주, 실패 종결 0회 | 현장 |
 
@@ -173,3 +174,41 @@ MediaPipe 파이프라인·게임 로직·판정 알고리즘 **무변경** (Pre
 ## 검증 계획 (이 세션)
 MouseDriver로 브라우저 셀프 테스트: 에디터 저작→링크 생성→러너 실행→항행→스테이션 완료 E2E.
 HandDriver 경로는 사용자가 웹캠 PC에서 Gate 1 체크리스트 재사용 검증.
+
+## M6.3 — Scene 문법 MVP-A: 침실 (2026-07-24 구현·검증)
+scene-grammar_v0.1.md §MVP-A를 실제 구현. Migration Map F1대로 데모 세션 flow[0]을
+"일어나서 옷 갈아입기"(station)에서 `makeBedroomMorningScene()`(livingScene)로 교체.
+
+**신규**: `session.js`에 `makeLivingScene()`/`makeBedroomMorningScene()`(envObjects·props·
+onComplete·exit 데이터), `runner-app.js`에 `LivingScenePhase` 클래스. 판정은 StationPhase의
+GRASP/CARRY/RELEASE FSM·양손 잡기를 그대로 재사용(신규 없음), interaction 신규 2종만 추가:
+- **slide**(커튼): 축 제약 드래그, 임계 거리 도달 시 완료·자동 해제
+- **bimanualLift**(이불): 양손 중점의 축 이동량이 임계값 도달 시 완료, 접힌 위치로 스냅
+
+**파생 오브젝트(P8) 구현**: `pajama` prop은 `startHidden:true`로 시작(리스트엔 존재, mesh·판정
+없음) → `clothes`(옷 입기) 완료 시 `onComplete.reveal`로 최초 노출·mesh 생성. 이후 `pajama`를
+빨래바구니 존으로 옮기면 최종 완료(exit) — "행동의 결과가 다음 행동의 이유를 만든다"(P5)를
+그대로 구현.
+
+**환경(비상호작용)**: window·bed·closet(기존 재사용)·laundryBasket — envObjects로 배경 렌더.
+
+**신규 라이브러리**: bed·window·curtain·laundryBasket·blanket(복셀 박스 조합) + pajama(shirt
+빌더 재사용, 색만 분리). `shirt` 빌더를 `buildShirt()` 함수로 추출해 `pajama`와 공유.
+
+**에디터 방어**: `f.type==='livingScene'`일 때 "편집 준비 중" 플레이스홀더로 조기 반환(크래시
+없음, `validateSession`도 livingScene을 허용 타입에 추가).
+
+**검증 (마우스 모드, 합성 입력 정밀 제어)**:
+- 커튼 슬라이드: 잡기→축 방향 드래그→임계 도달→`done`, 손 자동 ARMED 복귀 ✓
+- 이불 양손: 두 주먹 동시 잡기→중점 상승→임계 도달→접힌 위치 스냅 ✓
+  - **버그 발견·수정**: 완료 직후 두 손을 `ARMED`로 보내면 forEach 처리 순서상 아직
+    처리 전인 손이 "빈 주먹"으로 오판정돼 즉시 LOCKED+graspFail 오발생(R1 오작동) →
+    완료 시 두 손 다 `LOCKED`로 보내도록 수정, 대칭·graspFails=0 확인
+- 옷 갈아입기→잠옷 파생→빨래바구니: 전체 체인 완주, `outfit=dayclothes`, exit 배너
+  "⭐ 이제 세수하러 가요" 정상 표시 ✓ (t_release 타이머는 실제 경과시간 기반이라 합성
+  루프 테스트 시 `openHoldStart`를 직접 되돌려 검증 — 테스트 기법 메모)
+- "전체 하루" 15항목 전체 완주(⭐×31), 리포트 1행에 침실 Scene이 기존 `entrySummary()`
+  포맷 그대로 표시(특수 분기 불요) — 콘솔 에러 0
+- 에디터: 새 세션 로드 시 크래시 없음, 플레이스홀더 정상 표시, 팔레트 비활성화 정상
+
+**다음(MVP-B, 미착수)**: dual-perspective-system_v0.1.md §5의 세면실 Diegetic Mirror.

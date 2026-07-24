@@ -1183,6 +1183,327 @@ class StationPhase {
   }
 }
 
+/* ---------- 페이즈: 생활 장면 (Living Scene) ----------
+   scene-grammar_v0.1.md 정본. station과 달리 여러 occupation(행동)이 한 장면에 공존하고,
+   각 행동은 상태 변화를 남기며 서로의 전제조건이 된다(P5·P8). 판정은 기존 GRASP/CARRY/RELEASE
+   FSM·양손 잡기를 재사용하고, 신규는 slide(축 제약 끌기)·bimanualLift(양손 임계값) 2개뿐(C절).
+   렌더링은 기존 StationPhase와 동일한 거울 모드(풀스크린 웹캠 + 2.5D 오버레이) — 다이제틱 거울은
+   MVP-B(세면실) 대상이며 이 침실 장면에는 적용하지 않는다(dual-perspective-system_v0.1.md §3). */
+function makeLSHandFSM() {
+  return { fsm: 'LOCKED', carryId: null, openHoldStart: null, lossStart: null };
+}
+
+class LivingScenePhase {
+  constructor(scene) {
+    this.scene = scene;
+    this.grading = { ...GRADING_DEFAULTS, ...(scene.grading || {}) };
+    this.root = new THREE.Group();
+    stScene.add(this.root);
+    this.done = false;
+    this.startT = performance.now();
+    this.assistLevel = 0;
+    this.userState = { ...(scene.userState || {}) };
+    this.metrics = { graspAttempts: 0, graspFails: 0, releases: 0, misplaced: 0,
+                     trackLosses: 0, assistLevel: 0, stars: 0 };
+
+    // 배경 환경(비상호작용)
+    this.envMeshes = (scene.envObjects || []).map(def => {
+      const mesh = buildMesh(def.lib, def.scale || 1, session.assets);
+      const w = toWorld(def.pos[0], def.pos[1]);
+      mesh.position.set(w.x, w.y, -0.05);
+      this.root.add(mesh);
+      return mesh;
+    });
+
+    // 조작 사물 (파생 오브젝트는 mesh 생성을 보류 — P8)
+    this.props = (scene.props || []).map(def => {
+      const p = { def, id: def.id, nx: def.pos[0], ny: def.pos[1],
+        state: 'free', visible: !def.startHidden, mesh: null, anchor: null };
+      if (p.visible) this._buildPropMesh(p);
+      return p;
+    });
+
+    this.handFSM = { L: makeLSHandFSM(), R: makeLSHandFSM() };
+    applyPlaceDecor(this.root, scene);
+    videoWrap.classList.remove('hidden');
+    hudInstruction.textContent = scene.purpose || scene.title;
+    this._assistPropId = null;
+    this.updateHudStep();
+  }
+
+  _buildPropMesh(p) {
+    const mesh = buildMesh(p.def.lib, p.def.scale || 1, session.assets);
+    const w = toWorld(p.nx, p.ny);
+    mesh.position.set(w.x, w.y, 0.1);
+    this.root.add(mesh);
+    p.mesh = mesh;
+  }
+
+  propById(id) { return this.props.find(p => p.id === id); }
+
+  requiredProps() { return this.props.filter(p => p.def.required); }
+
+  updateHudStep() {
+    const req = this.requiredProps();
+    const done = req.filter(p => p.state === 'done').length;
+    hudStep.textContent = `${done} / ${req.length}`;
+    hudProgressFill.style.width = `${req.length ? done / req.length * 100 : 100}%`;
+    setHotbar(this.props.filter(p => p.visible).map(p => ({
+      icon: libMeta(p.def.lib, session.assets).emoji,
+      done: p.state === 'done',
+    })));
+  }
+
+  radiusScale() { return this.assistLevel >= 1 ? PARAMS.ASSIST_SCALE : 1; }
+
+  graspRadiusOf(p, pad = 1) {
+    const meta = libMeta(p.def.lib, session.assets);
+    return (this.grading.graspRadius + meta.size * (p.def.scale || 1) * 0.5) * this.radiusScale() * pad;
+  }
+
+  findGraspTarget(k, pos) {
+    let best = null, bestD = Infinity;
+    for (const p of this.props) {
+      if (!p.visible || p.state === 'carried' || p.state === 'done') continue;
+      if (p.def.hand === 'both') continue;
+      if (p.def.hand && p.def.hand !== 'any' && p.def.hand !== k) continue;
+      const d = Math.hypot(pos.x - p.nx, pos.y - p.ny);
+      if (d <= this.graspRadiusOf(p) && d < bestD) { best = p; bestD = d; }
+    }
+    return best;
+  }
+
+  nearBimanualProp(pos) {
+    return this.props.some(p => p.visible && p.def.hand === 'both' && p.state === 'free' &&
+      Math.hypot(pos.x - p.nx, pos.y - p.ny) <= this.graspRadiusOf(p, 1.3));
+  }
+
+  tryBimanualGrasp(input) {
+    const L = input.hands.L, R = input.hands.R;
+    if (!(L.present && R.present && L.cls === 'FIST' && R.cls === 'FIST')) return;
+    if (this.handFSM.L.carryId != null || this.handFSM.R.carryId != null) return;
+    for (const p of this.props) {
+      if (p.def.hand !== 'both' || p.state !== 'free') continue;
+      const r = this.graspRadiusOf(p, 1.3);
+      if (Math.hypot(L.pos.x - p.nx, L.pos.y - p.ny) <= r &&
+          Math.hypot(R.pos.x - p.nx, R.pos.y - p.ny) <= r) {
+        p.state = 'carried';
+        p.anchor = { mx: (L.pos.x + R.pos.x) / 2, my: (L.pos.y + R.pos.y) / 2, startX: p.nx, startY: p.ny };
+        ['L', 'R'].forEach(k => {
+          this.handFSM[k].fsm = 'CARRY'; this.handFSM[k].carryId = p.id; this.handFSM[k].openHoldStart = null;
+        });
+        this.metrics.graspAttempts++;
+        sfx.grab();
+        return;
+      }
+    }
+  }
+
+  /* 파생 오브젝트 노출(P8) + 상태 반영 */
+  applyOnComplete(p) {
+    const oc = p.def.onComplete;
+    if (!oc) return;
+    if (oc.setUserState) Object.assign(this.userState, oc.setUserState);
+    if (oc.reveal) {
+      const rp = this.propById(oc.reveal);
+      if (rp && !rp.visible) { rp.visible = true; this._buildPropMesh(rp); }
+    }
+  }
+
+  completeCarryToZone(k, f, p, now) {
+    f.carryId = null; f.openHoldStart = null; f.fsm = 'RELEASE';
+    this.metrics.releases++;
+    const z = p.def.zone;
+    const d = Math.hypot(p.nx - z.pos[0], p.ny - z.pos[1]);
+    if (d <= z.radius * this.radiusScale()) {
+      p.state = 'done';
+      p.nx = z.pos[0]; p.ny = z.pos[1];
+      if (p.mesh) { const w = toWorld(p.nx, p.ny); p.mesh.scale.multiplyScalar(0.75); p.mesh.position.set(w.x, w.y, 0.1); }
+      this.applyOnComplete(p);
+      sfx.drop();
+      burst(p.nx, p.ny);
+      this.updateHudStep();
+      this.checkExit();
+    } else {
+      p.state = 'free'; // 존 밖 → 그 자리에 남음, 재시도 가능 (실패 아님)
+      this.metrics.misplaced++;
+    }
+  }
+
+  update(input, dt) {
+    const now = performance.now();
+
+    const elapsedS = (now - this.startT) / 1000;
+    const newAssist = this.done ? this.assistLevel
+      : elapsedS > this.grading.assistTimeoutS * 2 ? 2 : elapsedS > this.grading.assistTimeoutS ? 1 : 0;
+    if (newAssist !== this.assistLevel) {
+      this.assistLevel = newAssist;
+      this.metrics.assistLevel = Math.max(this.metrics.assistLevel, newAssist);
+      if (newAssist >= 1) {
+        // P3: 지시문은 assist 1단계에서만 — 첫 미완료 필수 행동의 occupation을 힌트로
+        const next = this.requiredProps().find(p => p.state !== 'done' && p.visible);
+        assistBadge.textContent = next ? next.def.occupation : '도움: 주변을 둘러보아요';
+        assistBadge.classList.remove('hidden');
+      }
+      sfx.assist();
+    }
+
+    this.tryBimanualGrasp(input);
+
+    ['L', 'R'].forEach(k => {
+      const hand = input.hands[k];
+      const f = this.handFSM[k];
+      const cur = cursors[k];
+      if (hand.present && hand.pos) {
+        const w = toWorld(hand.pos.x, hand.pos.y);
+        cur.position.set(w.x, w.y, 0.5);
+        cur.visible = true;
+        cur.material.color.setHex(CLS_COLORS[hand.cls] || CLS_COLORS.NEUTRAL);
+        cur.scale.setScalar(f.fsm === 'CARRY' ? 1.3 : 1);
+        f.lossStart = null;
+      } else {
+        cur.visible = false;
+        if (f.fsm === 'CARRY' && f.carryId != null) {
+          if (!f.lossStart) f.lossStart = now;
+          if (now - f.lossStart > PARAMS.TRACK_LOSS_MS) {
+            const p = this.propById(f.carryId);
+            if (p) p.state = 'free';
+            const wasBimanual = p && p.def.hand === 'both';
+            f.carryId = null; f.fsm = 'LOCKED'; f.openHoldStart = null;
+            if (wasBimanual) {
+              const of = this.handFSM[k === 'L' ? 'R' : 'L'];
+              of.carryId = null; of.fsm = 'ARMED'; of.openHoldStart = null;
+            }
+            this.metrics.trackLosses++;
+          }
+        }
+        return;
+      }
+
+      switch (f.fsm) {
+        case 'LOCKED':
+          if (hand.cls === 'OPEN') f.fsm = 'ARMED';
+          break;
+        case 'ARMED':
+          if (hand.cls === 'FIST' && f.carryId == null) {
+            const p = this.findGraspTarget(k, hand.pos);
+            if (p) {
+              p.state = 'carried'; f.carryId = p.id; f.fsm = 'CARRY';
+              p.anchor = { hx: hand.pos.x, hy: hand.pos.y, startX: p.nx, startY: p.ny };
+              this.metrics.graspAttempts++;
+              sfx.grab();
+            } else if (this.nearBimanualProp(hand.pos)) {
+              // 양손 사물 근처 — 파트너 손 대기 (실패 아님)
+            } else {
+              this.metrics.graspAttempts++;
+              this.metrics.graspFails++;
+              f.fsm = 'LOCKED'; // R1: 빈 주먹 → 다시 펴야 재무장
+            }
+          }
+          break;
+        case 'CARRY': {
+          const p = this.propById(f.carryId);
+          if (!p) { f.fsm = 'ARMED'; f.carryId = null; break; }
+
+          if (p.def.interaction === 'carryToZone') {
+            p.nx = hand.pos.x; p.ny = hand.pos.y;
+            if (hand.cls === 'OPEN' && Math.abs(hand.vy) <= PARAMS.RELEASE_MAX_SPEED) {
+              if (!f.openHoldStart) f.openHoldStart = now;
+              if (now - f.openHoldStart >= this.grading.tReleaseMs) this.completeCarryToZone(k, f, p, now);
+            } else f.openHoldStart = null;
+          } else if (p.def.interaction === 'slide') {
+            if (hand.cls !== 'FIST') { f.fsm = 'ARMED'; f.carryId = null; break; }
+            const axisKey = p.def.axis === 'y' ? 'y' : 'x';
+            const raw = (hand.pos[axisKey] - p.anchor[axisKey === 'x' ? 'hx' : 'hy']) * p.def.dir;
+            const progress = Math.max(0, Math.min(1, raw / p.def.distance));
+            if (axisKey === 'x') p.nx = p.anchor.startX + p.def.dir * p.def.distance * progress;
+            else p.ny = p.anchor.startY + p.def.dir * p.def.distance * progress;
+            if (progress >= 1) {
+              p.state = 'done'; f.fsm = 'ARMED'; f.carryId = null;
+              this.applyOnComplete(p);
+              sfx.drop(); burst(p.nx, p.ny);
+              this.updateHudStep(); this.checkExit();
+            }
+          } else if (p.def.interaction === 'bimanualLift') {
+            const other = input.hands[k === 'L' ? 'R' : 'L'];
+            if (hand.cls !== 'FIST' || !other.present || other.cls !== 'FIST') {
+              // 어느 한쪽 손이라도 놓으면 실패 없이 대기 상태로 복귀
+              p.state = 'free';
+              ['L', 'R'].forEach(kk => {
+                if (this.handFSM[kk].carryId === p.id) {
+                  this.handFSM[kk].fsm = 'ARMED'; this.handFSM[kk].carryId = null;
+                }
+              });
+              break;
+            }
+            const midY = (hand.pos.y + other.pos.y) / 2;
+            const raw = (midY - p.anchor.my) * p.def.dir;
+            const progress = Math.max(0, Math.min(1, raw / p.def.distance));
+            p.nx = p.anchor.startX + (p.def.foldedPos[0] - p.anchor.startX) * progress;
+            p.ny = p.anchor.startY + (p.def.foldedPos[1] - p.anchor.startY) * progress;
+            if (progress >= 1) {
+              p.state = 'done';
+              p.nx = p.def.foldedPos[0]; p.ny = p.def.foldedPos[1];
+              if (p.mesh) p.mesh.scale.multiplyScalar(p.def.foldedScale || 0.6);
+              // 완료 순간 두 손 다 FIST 상태 — ARMED로 두면 forEach 처리 순서상 아직
+              // 처리 전인 손이 '빈 주먹'으로 오판정돼 즉시 LOCKED+graspFail이 발생(R1 오작동).
+              // 두 손 다 LOCKED로 보내 다시 펴야 재무장하게 하여 일관되게 만든다.
+              ['L', 'R'].forEach(kk => { this.handFSM[kk].fsm = 'LOCKED'; this.handFSM[kk].carryId = null; });
+              this.applyOnComplete(p);
+              sfx.drop(); burst(p.nx, p.ny);
+              this.updateHudStep(); this.checkExit();
+            }
+          }
+          break;
+        }
+        case 'RELEASE':
+          f.fsm = 'ARMED';
+          break;
+      }
+    });
+
+    // 사물 위치 반영
+    for (const p of this.props) {
+      if (!p.visible || !p.mesh) continue;
+      const w = toWorld(p.nx, p.ny);
+      const z = p.state === 'carried' ? 0.4 : 0.1;
+      p.mesh.position.lerp(new THREE.Vector3(w.x, w.y, z), Math.min(1, dt * 14));
+      if (p.mesh.userData.spin) p.mesh.userData.spin.rotation.y += dt * (p.state === 'carried' ? 2.2 : 0.3);
+      else p.mesh.rotation.y += dt * (p.state === 'carried' ? 2.2 : 0.3);
+    }
+
+    updateParticles(dt);
+  }
+
+  checkExit() {
+    if (this.done) return;
+    const req = this.requiredProps();
+    if (req.length && req.every(p => p.state === 'done')) this.complete();
+  }
+
+  complete() {
+    this.done = true;
+    this.metrics.stars = Math.max(1, 3 - this.metrics.assistLevel);
+    sfx.stationDone();
+    const last = this.requiredProps().slice(-1)[0];
+    burst(last ? last.nx : 0.5, last ? last.ny : 0.5, 0x4fd1c5);
+    const transition = this.scene.exit?.transition || '참 잘했어요!';
+    banner.textContent = `${'⭐'.repeat(this.metrics.stars)} ${transition}`;
+    banner.classList.remove('hidden');
+  }
+
+  render() { renderer.render(stScene, stCam); }
+  dispose() {
+    stScene.remove(this.root);
+    cursors.L.visible = false; cursors.R.visible = false;
+    banner.classList.add('hidden');
+    assistBadge.classList.add('hidden');
+    placeChip.classList.add('hidden');
+    videoWrap.style.background = '';
+    setHotbar(null);
+  }
+}
+
 /* ---------- 메인 플로우 ---------- */
 let driver = null;
 let current = null;
@@ -1224,11 +1545,12 @@ async function runFlow(indices = null, { returnToMenu = false } = {}) {
       if (current) current.dispose();
       current = item.type === 'segment' ? new NavPhase(item)
               : item.type === 'crossing' ? new CrossingPhase(item)
+              : item.type === 'livingScene' ? new LivingScenePhase(item)
               : item.kind === 'select' ? new SelectPhase(item)
               : new StationPhase(item);
     });
     const phaseRef = current;
-    await waitPhase(current, item.type === 'station' ? 1800 : 400);
+    await waitPhase(current, (item.type === 'station' || item.type === 'livingScene') ? 1800 : 400);
     pushReportEntry(item, phaseRef, performance.now() - phaseStart);
     stagePlayed.add(i);
     if (phaseRef.metrics && phaseRef.metrics.stars)
@@ -1325,7 +1647,7 @@ function loop() {
     current.render();
   }
   // 손 미검출 안내 (웹캠 모드 + 거울 조작 과제에서만)
-  const mirrorTask = current && (current instanceof StationPhase || current instanceof SelectPhase);
+  const mirrorTask = current && (current instanceof StationPhase || current instanceof SelectPhase || current instanceof LivingScenePhase);
   if (driver.needsCamera && mirrorTask && !current.done) {
     const anyHand = input.hands.L.present || input.hands.R.present;
     if (!anyHand) {
@@ -1423,6 +1745,7 @@ function showStartError(err) {
 function cognitiveTags(item) {
   if (item.type === 'segment') return ['주의', '양측협응'];
   if (item.type === 'crossing') return ['충동억제', '인과추론'];
+  if (item.type === 'livingScene') return ['순서기억', '양측협응', '주의'];
   if (item.kind === 'select') return ['작업기억', '인과추론'];
   const items = item.items || [];
   const t = []; // 실행기능 태그를 앞으로 (slice(0,3)에서 살아남도록)
@@ -1441,6 +1764,8 @@ function stageLabel(item) {
     return { emoji: '🏃', title: `걷기 · ${THEME_NAMES[item.theme] || ''}`, type: `이동 · Level ${item.level}` };
   if (item.type === 'crossing')
     return { emoji: '🚦', title: '횡단보도 건너기', type: `신호 지키기 · Level ${item.level}` };
+  if (item.type === 'livingScene')
+    return { emoji: PLACES[item.place]?.emoji || '🏠', title: item.title, type: '생활 장면' };
   const place = PLACES[item.place];
   if (item.kind === 'select')
     return { emoji: place?.emoji || '🃏', title: item.title, type: '고르기' };

@@ -27,6 +27,18 @@ function ringFrame(size, thick, depth, c) {
   return g;
 }
 
+function buildShirt(c) {
+  const g = new THREE.Group();
+  g.add(box(0.8, 0.9, 0.2, c));
+  const armL = box(0.35, 0.5, 0.18, c, -0.55, 0.25, 0);
+  const armR = armL.clone();
+  armL.rotation.z = 0.4;
+  armR.position.x = 0.55; armR.rotation.z = -0.4;
+  g.add(armL, armR);
+  g.add(box(0.3, 0.1, 0.05, '#f7fafc', 0, 0.48, 0.11));
+  return g;
+}
+
 const BUILDERS = {
   backpack(c) {
     const g = new THREE.Group();
@@ -214,17 +226,8 @@ const BUILDERS = {
     g.add(box(0.42, 0.42, 0.5, c, -0.42, 0.14, 0));
     return g;
   },
-  shirt(c) {
-    const g = new THREE.Group();
-    g.add(box(0.8, 0.9, 0.2, c));
-    const armL = box(0.35, 0.5, 0.18, c, -0.55, 0.25, 0);
-    const armR = armL.clone();
-    armL.rotation.z = 0.4;
-    armR.position.x = 0.55; armR.rotation.z = -0.4;
-    g.add(armL, armR);
-    g.add(box(0.3, 0.1, 0.05, '#f7fafc', 0, 0.48, 0.11));
-    return g;
-  },
+  shirt: buildShirt,
+  pajama: buildShirt, // 색상만 libMeta에서 분리 (잠옷 vs 외출복 구분)
   pencil(c) {
     const g = new THREE.Group();
     g.add(box(0.2, 1.1, 0.2, c));
@@ -296,6 +299,42 @@ const BUILDERS = {
     g.add(box(1.5, 0.1, 0.9, c, 0, 0.4, 0));
     [[-0.65, -0.35], [0.65, -0.35], [-0.65, 0.35], [0.65, 0.35]].forEach(([x, z]) =>
       g.add(box(0.1, 0.9, 0.1, '#718096', x, -0.05, z)));
+    return g;
+  },
+  /* 생활 장면 — 침실 환경·소품 */
+  bed(c) {
+    const g = new THREE.Group();
+    g.add(box(1.8, 0.35, 1.1, '#7a5a3a', 0, -0.3, 0));      // 프레임
+    g.add(box(1.7, 0.25, 1.0, '#f7fafc', 0, -0.05, 0));     // 매트리스
+    g.add(box(0.4, 0.3, 0.95, c, -0.68, 0.15, 0));           // 베개
+    return g;
+  },
+  window(c) {
+    const g = new THREE.Group();
+    g.add(box(1.3, 1.3, 0.1, '#e2e8f0', 0, 0, -0.1));        // 창틀
+    g.add(box(1.14, 1.14, 0.06, c, 0, 0, 0));                // 유리(밝음)
+    g.add(box(0.06, 1.14, 0.08, '#e2e8f0', 0, 0, 0.02));     // 십자 창살
+    g.add(box(1.14, 0.06, 0.08, '#e2e8f0', 0, 0, 0.02));
+    return g;
+  },
+  curtain(c) {
+    const g = new THREE.Group();
+    for (let i = -1; i <= 1; i++) g.add(box(0.32, 1.3, 0.08, c, i * 0.34, 0, 0.05));
+    g.add(box(1.3, 0.08, 0.1, '#5f4632', 0, 0.68, 0.05));    // 레일
+    return g;
+  },
+  laundryBasket(c) {
+    const g = new THREE.Group();
+    g.add(box(0.9, 0.55, 0.7, c, 0, -0.05, 0));
+    g.add(box(0.96, 0.08, 0.76, '#975a16', 0, 0.24, 0));
+    return g;
+  },
+  blanket(c) {
+    // 헝클어진 이불: 층이 어긋난 박스 3개로 구겨진 느낌
+    const g = new THREE.Group();
+    g.add(box(1.2, 0.16, 0.8, c, 0, 0, 0));
+    g.add(box(0.9, 0.14, 0.6, c, 0.15, 0.1, 0.1, { roughness: 0.9 }));
+    g.add(box(0.5, 0.12, 0.4, '#e2e8f0', -0.25, 0.16, -0.1));
     return g;
   },
 };

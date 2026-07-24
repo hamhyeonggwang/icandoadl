@@ -314,6 +314,14 @@ function renderProps() {
     return;
   }
 
+  if (f.type === 'livingScene') {
+    propsPanel.innerHTML = `
+      <h3>🛏️ 생활 장면</h3>
+      <p class="hint">이 장면 유형(Scene)은 에디터 편집이 아직 준비되지 않았어요.
+      데모 세션의 고정 장면으로만 재생돼요. 이름: <b>${(f.title || '').replace(/</g, '')}</b></p>`;
+    return;
+  }
+
   if (f.type === 'crossing') {
     propsPanel.innerHTML = `
       <h3>🚦 횡단보도</h3>

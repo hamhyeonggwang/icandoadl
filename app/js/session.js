@@ -55,6 +55,59 @@ export function makeSelectStation(over = {}) {
   };
 }
 
+/* 생활 장면(Living Scene) — scene-grammar_v0.1.md 정본.
+   station(옮기기)과 달리 여러 개의 서로 다른 occupation(행동)을 하나의 장면 안에 담고,
+   각 행동은 상태 변화를 남기며, 선택된 행동은 다음 행동의 전제조건이 된다(P5·P8).
+   props[].interaction: 'carryToZone'(존에 놓기) | 'slide'(축 제약 끌기) | 'bimanualLift'(양손 끌어올리기) */
+export function makeLivingScene(over = {}) {
+  return {
+    type: 'livingScene',
+    place: 'room',
+    title: '생활 장면',
+    purpose: '',              // HUD 1행 — 생활어(지시어 아님)
+    userState: {},
+    envObjects: [],           // 배경 사물: { id, lib, pos, scale }
+    props: [],                // 조작 사물: 아래 shape 참고
+    grading: { ...GRADING_DEFAULTS },
+    ...over,
+  };
+}
+
+/* 침실 아침 장면 — Scene Grammar §E-3 · §MVP-A.
+   필수(required): 옷 갈아입기 → (파생) 잠옷 정리. 선택(optional): 커튼·이불. */
+export function makeBedroomMorningScene(over = {}) {
+  return makeLivingScene({
+    place: 'room',
+    title: '아침, 학교 갈 준비',
+    purpose: '아직 잠옷을 입고 있어요 — 학교 갈 준비를 해요',
+    userState: { outfit: 'sleepwear' },
+    envObjects: [
+      { id: 'window', lib: 'window', pos: [0.1, 0.28], scale: 1.1 },
+      { id: 'bedFrame', lib: 'bed', pos: [0.27, 0.74], scale: 1.5 },
+      { id: 'closet', lib: 'closet', pos: [0.82, 0.5], scale: 1.3 },
+      { id: 'laundryBasket', lib: 'laundryBasket', pos: [0.62, 0.86], scale: 1.0 },
+    ],
+    props: [
+      { id: 'curtain', lib: 'curtain', pos: [0.13, 0.34], scale: 1.0, hand: 'any',
+        interaction: 'slide', axis: 'x', dir: 1, distance: 0.14,
+        occupation: '커튼을 옆으로 열어요', required: false },
+      { id: 'blanket', lib: 'blanket', pos: [0.26, 0.64], scale: 1.0, hand: 'both',
+        interaction: 'bimanualLift', axis: 'y', dir: -1, distance: 0.12,
+        foldedPos: [0.35, 0.6], foldedScale: 0.5,
+        occupation: '이불을 양손으로 개어요', required: false },
+      { id: 'clothes', lib: 'shirt', pos: [0.82, 0.44], scale: 1.0, hand: 'any',
+        interaction: 'carryToZone', zone: { pos: [0.5, 0.88], radius: 0.15 },
+        occupation: '옷장에서 옷을 꺼내 입어요', required: true,
+        onComplete: { setUserState: { outfit: 'dayclothes' }, reveal: 'pajama' } },
+      { id: 'pajama', lib: 'pajama', pos: [0.27, 0.68], scale: 0.9, hand: 'any',
+        interaction: 'carryToZone', zone: { pos: [0.62, 0.86], radius: 0.14 },
+        occupation: '벗은 잠옷을 바구니에 넣어요', required: true, startHidden: true },
+    ],
+    exit: { transition: '이제 세수하러 가요' },
+    ...over,
+  });
+}
+
 export function makeSession(over = {}) {
   return { version: 1, title: '새 세션', flow: [], ...over };
 }
@@ -84,7 +137,7 @@ export function validateSession(s) {
             errs.push(`${i + 1}번 스테이션: 예산(${f.budget}원)으로 완료 불가 — 최소 조합 ${cheapest}원`);
         }
       }
-    } else if (f.type !== 'segment' && f.type !== 'crossing') {
+    } else if (f.type !== 'segment' && f.type !== 'crossing' && f.type !== 'livingScene') {
       errs.push(`${i + 1}번 항목: 알 수 없는 type`);
     }
   });
@@ -113,10 +166,7 @@ export function makeDemoSession() {
   return makeSession({
     title: '우리 마을 하루 (데모)',
     flow: [
-      st('일어나서 옷 갈아입기', 'room', '벗은 잠옷과 모자를 옷장에 정리해요',
-        [{ lib: 'shirt', pos: [0.25, 0.6], scale: 1, hand: 'any' },
-         { lib: 'hat', pos: [0.42, 0.68], scale: 1, hand: 'any' }],
-        { lib: 'closet', pos: [0.78, 0.55], scale: 1.3, zoneRadius: 0.13 }),
+      makeBedroomMorningScene(),
       st('세수와 양치', 'washstand', '칫솔과 비누를 세면대에 놓아요',
         [{ lib: 'toothbrush', pos: [0.25, 0.6], scale: 1, hand: 'any' },
          { lib: 'soap', pos: [0.42, 0.7], scale: 1, hand: 'any' }],

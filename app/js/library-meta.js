@@ -37,6 +37,13 @@ export const LIBRARY = {
   footmat:    { name: '발판',     emoji: '👣', color: '#38a169', size: 0.08,  targetOk: true },
   plate:      { name: '접시',     emoji: '🍽️', color: '#f7fafc', size: 0.07,  targetOk: true },
   desk:       { name: '책상',     emoji: '🪑', color: '#b7791f', size: 0.09,  targetOk: true },
+  /* 생활 장면(Scene) 확장 — 침실 아침 */
+  bed:        { name: '침대',     emoji: '🛏️', color: '#9c6f44', size: 0.13 },
+  window:     { name: '창문',     emoji: '🪟', color: '#bee3f8', size: 0.1 },
+  curtain:    { name: '커튼',     emoji: '🧵', color: '#805ad5', size: 0.07 },
+  laundryBasket: { name: '빨래바구니', emoji: '🧺', color: '#b7791f', size: 0.08, targetOk: true },
+  blanket:    { name: '이불',     emoji: '🛌', color: '#4299e1', size: 0.09 },
+  pajama:     { name: '잠옷',     emoji: '🩳', color: '#b19cd9', size: 0.055 },
 };
 
 /* 스테이션 장소 (place) — 거울 모드 위 장소 칩 + 3D 소품 데코 색 */
