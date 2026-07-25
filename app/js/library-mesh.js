@@ -275,6 +275,14 @@ const BUILDERS = {
     g.add(box(0.06, 0.06, 0.06, '#ecc94b', 0.1, 0, 0.26));
     return g;
   },
+  fridge(c) {
+    const g = new THREE.Group();
+    g.add(box(1.0, 1.6, 0.5, c));
+    g.add(box(1.02, 0.06, 0.52, '#a0aec0', 0, 0.35, 0));
+    g.add(box(0.06, 0.35, 0.06, '#718096', -0.4, 0.55, 0.27));
+    g.add(box(0.06, 0.35, 0.06, '#718096', -0.4, -0.15, 0.27));
+    return g;
+  },
   sink(c) {
     // 일체형: 받침대-세면볼-수전이 정면(정사영) 뷰에서 붙어 보이도록 같은 평면에 구성
     const g = new THREE.Group();

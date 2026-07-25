@@ -78,9 +78,18 @@ export function applyCourseLevel(segment, lv) {
 }
 
 /* 횡단보도: 2차선 도로 + 보행 신호등. Level 0 초록불 자동 / 1 교대 스트로크로 건넘
-   (손들기 게이트는 폐기 — 스트로크(양손 주먹)와 손들기(편 손)가 동작 모순, 현장 피드백) */
+   (손들기 게이트는 폐기 — 스트로크(양손 주먹)와 손들기(편 손)가 동작 모순, 현장 피드백)
+   R2 승격(crosswalk-core_v0.1.md, 2026-07-25 — 세션 최중요 컨셉):
+   reps: 총 횡단 횟수(3단계 구조 — 1회=연습, 2회=반복, 3회=적용). 매회 같은 규칙을 다시
+   요구해 "반복 없는 반복"(변주 반복)으로 학습을 굳힌다.
+   lookBothWays: 연석에서 초록불 전 좌→우 순서로 살피기 강제(비처벌 — 순서가 틀리면
+   처음부터 다시 살피면 될 뿐, 실패 아님). 순서 강제는 실제 보행 교육과 동일(좌측 차로가
+   먼저 온다).
+   ballRep: 공이 도로로 굴러가는 시나리오가 등장할 반복 차수(1-base, reps 범위 내).
+   0=없음. 회차별 고정 배치 — 무작위 아님(사행성 배제·예측 가능성 원칙, 사용자 결정). */
 export function makeCrossing(over = {}) {
-  return { type: 'crossing', level: 1, redS: 7, greenS: 9, ...over };
+  return { type: 'crossing', level: 1, redS: 7, greenS: 9,
+    reps: 1, lookBothWays: false, ballRep: 0, ...over };
 }
 
 export function makeStation(over = {}) {
@@ -229,7 +238,7 @@ export function makeMartErrandScene(over = {}) {
         interaction: 'carryToZone', zone: cartZone, distractor: true,
         occupation: '', required: false },
     ],
-    exit: { transition: '결제 완료! 이제 집에 가요' },
+    exit: { transition: '결제 완료! 문구점도 들러야겠다' },
     difficulty: 3,
     ...over,
   });
@@ -284,16 +293,26 @@ export function decodeSession(str) {
   return JSON.parse(new TextDecoder().decode(bytes));
 }
 
-/* 데모 세션 — "우리 마을 하루": 아이방에서 학교까지 마을 한 블록 (A3 확장)
-   v1.1: 버스 정류장(노선 고르기)·마트 예산 장보기·카페 키오스크·길찾기 앱 포함 */
+/* 데모 세션 (content-coherence_v0.1.md R1 — 2026-07-25 서사 분할):
+   등교 중 마트·문구점·카페를 들르는 시간 맥락 모순(ecological-validity_v0.1.md 문제4, 07-24
+   진단·미적용)을 해소 — 하루를 실제 occupation 시점에 맞는 두 편으로 나눈다.
+   1편 "학교 가는 아침"(집→학교, 등교) / 2편 "심부름 다녀오기"(하교 후, 장보기·정리).
+   카페 키오스크는 두 서사 모두에서 제거하고 독립 훈련(makeKioskDrillSession)으로 분리
+   — "키오스크 사용법" 자체가 목적이지 아동의 등교·심부름 occupation이 아니기 때문(사용자 결정).
+   길찾기 앱은 제거(매일 가는 학교를 지도로 찾지 않는다 — ecological-validity 기존 결론 이행,
+   지도의 실물화는 content-coherence §B 후속 과제로 남김). */
+const st = (title, place, instruction, items, target, extra = {}) =>
+  makeStation({ title, place, instruction, items, target, grading: { ...GRADING_DEFAULTS }, ...extra });
+const sel = (title, place, steps, difficulty) =>
+  makeSelectStation({ title, place, steps, ...(difficulty ? { difficulty } : {}) });
+const walk = (theme, length, lv, over = {}) => applyCourseLevel(makeSegment({ length, theme, ...over }), lv);
+
+/* 1편 — "학교 가는 아침": 기상→등교. 최중요 컨셉인 횡단보도(crosswalk-core_v0.1.md)에
+   R2 승격 적용 — 좌→우 살핌 순서 강제, 반복 3회(연습·반복·적용), 공 시나리오는 3번째
+   반복에 고정 배치(무작위 아님 — 사용자 결정, 예측 가능성 원칙). */
 export function makeDemoSession() {
-  const st = (title, place, instruction, items, target, extra = {}) =>
-    makeStation({ title, place, instruction, items, target, grading: { ...GRADING_DEFAULTS }, ...extra });
-  const sel = (title, place, steps, difficulty) =>
-    makeSelectStation({ title, place, steps, ...(difficulty ? { difficulty } : {}) });
-  const walk = (theme, length, lv, over = {}) => applyCourseLevel(makeSegment({ length, theme, ...over }), lv);
   return makeSession({
-    title: '우리 마을 하루 (데모)',
+    title: '학교 가는 아침 (1편)',
     flow: [
       makeBedroomMorningScene(),
       makeWashstandMirrorScene(),
@@ -302,6 +321,13 @@ export function makeDemoSession() {
          { lib: 'juice', pos: [0.42, 0.68], scale: 1, hand: 'any' }],
         { lib: 'tray', pos: [0.75, 0.65], scale: 1.3, zoneRadius: 0.12 },
         { difficulty: 1 }),
+      // 가방 싸기(R1 신설) — "넣기"의 올바른 자리는 등굣길 문구점이 아니라 집. 교실 도착에서
+      // 같은 사물(필통·책)을 '꺼내는' 것과 짝을 이룬다(content-coherence §A 가방 흐름 교정).
+      st('학교 가방 챙기기', 'room', '필통과 책을 가방에 넣어요',
+        [{ lib: 'pencilcase', pos: [0.24, 0.58], scale: 1, hand: 'any' },
+         { lib: 'book', pos: [0.42, 0.66], scale: 1.5, hand: 'any' }],
+        { lib: 'backpack', pos: [0.76, 0.6], scale: 1.3, zoneRadius: 0.13 },
+        { difficulty: 2 }),
       // 외출: 신발장에서 신발을 '꺼내' 발판 위에서 신는다 (방향 반전 — 현장 피드백)
       st('신발 꺼내 신기', 'entrance', '신발장에서 신발을 꺼내 발판에 놓아요',
         [{ lib: 'shoe', pos: [0.22, 0.55], scale: 1, hand: 'any' },
@@ -326,32 +352,10 @@ export function makeDemoSession() {
                     { label: '뒷문', emoji: '🚫', correct: false }] },
       ], 2),
       walk('street', 'short', 3), // 커브: 지속 조향
-      makeCrossing({ level: 1, redS: 7, greenS: 9 }),
-      makeMartErrandScene(),
-      // 단순 계산(P5 §A-인지 L4): 용돈 1000원으로 3개 중 2개만 담을 수 있다 — 어떤 2개를
-      // 고르느냐가 예산 안에 들어오는지 스스로 가늠해야 함(전부 담으면 1600원, 예산 초과).
-      st('문구점 들르기', 'stationery', '용돈 1000원 — 담을 수 있는 것 2가지를 가방에 넣어요',
-        [{ lib: 'pencil', pos: [0.26, 0.62], scale: 1, hand: 'any', price: 300 },
-         { lib: 'notebook', pos: [0.44, 0.68], scale: 1, hand: 'any', price: 700 },
-         { lib: 'eraser', pos: [0.36, 0.5], scale: 0.9, hand: 'any', price: 600 }],
-        { lib: 'backpack', pos: [0.77, 0.58], scale: 1.3, zoneRadius: 0.12 },
-        { difficulty: 3, budget: 1000, requiredCount: 2 }),
-      sel('카페 키오스크', 'cafe', [
-        { prompt: '딸기주스를 주문해요 — 메뉴에서 골라요',
-          options: [{ label: '딸기주스', emoji: '🍓', correct: true },
-                    { label: '우유', emoji: '🥛', correct: false },
-                    { label: '포도주스', emoji: '🍇', correct: false }] },
-        { prompt: '결제 버튼을 눌러요',
-          options: [{ label: '결제', emoji: '💳', correct: true },
-                    { label: '취소', emoji: '❌', correct: false }] },
-      ], 2),
-      sel('길찾기 앱', 'street', [
-        { prompt: '🗺️ 학교는 어느 쪽일까요? 지도를 보고 골라요',
-          options: [{ label: '위쪽', emoji: '⬆️', correct: true },
-                    { label: '왼쪽', emoji: '⬅️', correct: false },
-                    { label: '오른쪽', emoji: '➡️', correct: false }] },
-      ]),
-      // 갈림길 2회 + 미니맵 암기 (길찾기 앱 직후 — 서사적으로 정합) + 이중과제(P5 §A-인지 L5):
+      // 횡단보도 R2 승격(crosswalk-core_v0.1.md, 확정): 좌→우 살핌 강제·반복 3회·
+      // 공 시나리오는 3번째(마지막=적용 단계)에 고정
+      makeCrossing({ level: 1, redS: 7, greenS: 9, reps: 3, lookBothWays: true, ballRep: 3 }),
+      // 갈림길 2회 + 미니맵 암기(§A) + 이중과제(P5 §A-인지 L5):
       // 조향하는 동안 주황 깃발만 세고 초록 깃발(방해자극)은 무시 — 정답은 뒤 회상 스텝에서 확인
       walk('school', 'medium', 5, {
         flags: [
@@ -360,6 +364,7 @@ export function makeDemoSession() {
           { z: 0.85, xOffset: -1.1, color: 'orange' },
         ],
       }),
+      // 교실 도착 — 아침에 가방에 넣은 필통·책을 여기서 '꺼낸다'(넣기→꺼내기 호응)
       st('교실 도착', 'school', '큰 책은 양손으로! 책상에 꺼내요',
         [{ lib: 'pencilcase', pos: [0.25, 0.6], scale: 1, hand: 'any' },
          { lib: 'book', pos: [0.42, 0.68], scale: 1.7, hand: 'both' }],
@@ -373,6 +378,55 @@ export function makeDemoSession() {
                     { label: '3개', emoji: '3️⃣', correct: false }],
           recall: true },
       ], 5),
+    ],
+  });
+}
+
+/* 2편 — "심부름 다녀오기": 하교 후·오후의 occupation. 마트·문구점·예산 계산(P5)이
+   본래 있어야 할 시간 맥락. 횡단보도는 2번째 노출(장소 변주 = 일반화, R2 이하 프리셋
+   기본값 그대로 — 매 심부름마다 반복 3회 전 구조를 다시 요구하면 과도하므로 reps:1). */
+export function makeErrandSession() {
+  return makeSession({
+    title: '심부름 다녀오기 (2편)',
+    flow: [
+      walk('street', 'short', 2),
+      makeCrossing({ level: 1, redS: 7, greenS: 9 }), // 일반화: 같은 규칙, 다른 장소·시간
+      makeMartErrandScene(),
+      // 단순 계산(P5 §A-인지 L4): 용돈 1000원으로 3개 중 2개만 담을 수 있다 — 심부름·쇼핑
+      // 맥락(문구 사기)이 예산 계산의 올바른 자리 — 등굣길이 아니다(content-coherence 교정)
+      st('문구점 들르기', 'stationery', '용돈 1000원 — 담을 수 있는 것 2가지를 가방에 넣어요',
+        [{ lib: 'pencil', pos: [0.26, 0.62], scale: 1, hand: 'any', price: 300 },
+         { lib: 'notebook', pos: [0.44, 0.68], scale: 1, hand: 'any', price: 700 },
+         { lib: 'eraser', pos: [0.36, 0.5], scale: 0.9, hand: 'any', price: 600 }],
+        { lib: 'backpack', pos: [0.77, 0.58], scale: 1.3, zoneRadius: 0.12 },
+        { difficulty: 3, budget: 1000, requiredCount: 2 }),
+      walk('street', 'short', 1),
+      // 정리 — 사 온 것을 제자리에. "결제 완료! 이제 집에 가요"가 참이 되는 순간(마트 장면
+      // exit 대사와의 모순 해소, content-coherence §A)이자 심부름의 완결.
+      st('사 온 것 정리하기', 'kitchen', '사 온 우유를 냉장고에 넣어요',
+        [{ lib: 'milk', pos: [0.3, 0.6], scale: 1, hand: 'any' }],
+        { lib: 'fridge', pos: [0.76, 0.55], scale: 1.3, zoneRadius: 0.13 },
+        { difficulty: 1 }),
+    ],
+  });
+}
+
+/* 카페 키오스크 — 독립 훈련(사용자 결정: "별도처리"). 아동의 등교·심부름 occupation이
+   아니라 키오스크 조작이라는 기능 자체가 목적이므로 어느 서사에도 포함하지 않는다.
+   치료사 동석을 전제하는 프레이밍으로 지시문을 분리. */
+export function makeKioskDrillSession() {
+  return makeSession({
+    title: '키오스크 사용법 연습',
+    flow: [
+      sel('키오스크 사용법 연습', 'cafe', [
+        { prompt: '선생님과 함께 딸기주스를 주문해요 — 메뉴에서 골라요',
+          options: [{ label: '딸기주스', emoji: '🍓', correct: true },
+                    { label: '우유', emoji: '🥛', correct: false },
+                    { label: '포도주스', emoji: '🍇', correct: false }] },
+        { prompt: '결제 버튼을 눌러요',
+          options: [{ label: '결제', emoji: '💳', correct: true },
+                    { label: '취소', emoji: '❌', correct: false }] },
+      ], 2),
     ],
   });
 }

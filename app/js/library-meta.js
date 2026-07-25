@@ -34,6 +34,7 @@ export const LIBRARY = {
   cart:       { name: '장바구니', emoji: '🛒', color: '#e53e3e', size: 0.085, targetOk: true },
   shoerack:   { name: '신발장',   emoji: '🗄️', color: '#975a16', size: 0.085, targetOk: true },
   closet:     { name: '옷장',     emoji: '🚪', color: '#9c6f44', size: 0.09,  targetOk: true },
+  fridge:     { name: '냉장고',   emoji: '🧊', color: '#e2e8f0', size: 0.09,  targetOk: true },
   sink:       { name: '세면대',   emoji: '🚰', color: '#e2e8f0', size: 0.085, targetOk: true },
   footmat:    { name: '발판',     emoji: '👣', color: '#38a169', size: 0.08,  targetOk: true },
   plate:      { name: '접시',     emoji: '🍽️', color: '#f7fafc', size: 0.07,  targetOk: true },

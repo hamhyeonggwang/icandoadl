@@ -3,7 +3,8 @@
    C2: 카메라 스트림은 온디바이스 소비만, 저장·전송 없음. 페이즈 전환 시 렌더링만 토글. */
 import * as THREE from 'three';
 import { PARAMS } from './params.js';
-import { decodeSession, makeDemoSession, SEGMENT_LENGTHS, GRADING_DEFAULTS, applyDifficultyPreset } from './session.js';
+import { decodeSession, makeDemoSession, makeErrandSession, makeKioskDrillSession,
+  SEGMENT_LENGTHS, GRADING_DEFAULTS, applyDifficultyPreset } from './session.js';
 import { libMeta, PLACES } from './library-meta.js';
 import { buildMesh } from './library-mesh.js';
 
@@ -100,6 +101,18 @@ document.getElementById('fileSession').addEventListener('change', async e => {
   e.target.value = '';
 });
 
+/* R1(content-coherence_v0.1.md): 하루를 실제 시간 맥락에 맞는 두 편으로 분리 — 등교(1편)와
+   하교 후 심부름(2편)은 서로 다른 occupation 시점이므로 한 흐름에 섞지 않는다. 카페
+   키오스크는 어느 서사에도 속하지 않는 독립 훈련(사용자 결정: "별도처리"). */
+function switchSession(factory) {
+  session = applyLevelOverrides(factory());
+  updateStartTexts();
+  renderSuggestCard();
+}
+document.getElementById('btnPart1').addEventListener('click', () => switchSession(makeDemoSession));
+document.getElementById('btnPart2').addEventListener('click', () => switchSession(makeErrandSession));
+document.getElementById('btnKioskDrill').addEventListener('click', () => switchSession(makeKioskDrillSession));
+
 /* ---------- 세션 리포트 (C2: 파생 수치만, 온디바이스, 로컬 다운로드) ----------
    A2 승격: 자동 기록은 치료사 동석 관찰의 '보조' — 화면 요약 + JSON/CSV 로컬 저장 */
 const report = { startedAt: null, title: '', entries: [] };
@@ -134,6 +147,24 @@ const sfx = {
   blinkTick: () => tone(1046, 0.06, 'square', 0.06),
   redStop: () => tone(330, 0.35, 'sine', 0.1),
 };
+
+/* ---------- 음성 안내 (R2 — Web Speech API, 외부 자산 없음·온디바이스 처리) ----------
+   전학령기·발달장애 대상은 문해 이전 단계 — 텍스트 지시만으로는 접근 불가하다는
+   visual-perception_v0.1.md 진단에 대한 응답. mute 버튼(M) 하나로 효과음·음성을 함께 제어. */
+let _lastSpoken = null;
+function speak(text) {
+  if (muted || !text) return;
+  if (!('speechSynthesis' in window)) return; // 미지원 브라우저: 조용히 생략(텍스트는 항상 표시됨)
+  window.speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = 'ko-KR'; u.rate = 0.95; u.pitch = 1.05;
+  window.speechSynthesis.speak(u);
+}
+/* HUD 지시문 표시 + 음성 발화를 한 곳에서 — 동일 문구 반복 시 재발화 방지 */
+function setInstruction(text) {
+  hudInstruction.textContent = text;
+  if (text && text !== _lastSpoken) { _lastSpoken = text; speak(text); }
+}
 
 /* ---------- 렌더러 ---------- */
 const renderer = new THREE.WebGLRenderer({ canvas: glcanvas, alpha: true, antialias: true });
@@ -435,9 +466,9 @@ class NavPhase {
     this.mapRevealed = this.mapRevealS <= 0;
     if (!this.mapRevealed) {
       const route = this.forkState.map(f => f.correct === 'L' ? '⬅️' : '➡️').join(' → ');
-      hudInstruction.textContent = `🗺️ 경로를 기억하세요: ${route}`;
+      setInstruction(`🗺️ 경로를 기억하세요: ${route}`);
     } else {
-      hudInstruction.textContent = this.baseInstruction;
+      setInstruction(this.baseInstruction);
     }
   }
   update(input, dt) {
@@ -445,7 +476,7 @@ class NavPhase {
       this.mapRevealElapsed += dt;
       if (this.mapRevealElapsed >= this.mapRevealS) {
         this.mapRevealed = true;
-        hudInstruction.textContent = this.baseInstruction;
+        setInstruction(this.baseInstruction);
       }
       return; // 출발 전 암기 구간 — 아직 이동하지 않음
     }
@@ -620,6 +651,19 @@ function buildCrossingCourse() {
   return { group: g, redLamp, greenLamp, cars };
 }
 
+/* 공 시나리오(R2 §C) — 회차 고정 배치, 실제 위치는 절대 움직이지 않는다(연석 잠금과 동일
+   원리로 물리적 실수 자체를 차단, 시도만 관찰 지표로 기록) */
+function buildBall() {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5),
+    new THREE.MeshStandardMaterial({ color: '#e53e3e', flatShading: true }));
+  const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.14, 0.52),
+    new THREE.MeshStandardMaterial({ color: '#f7fafc', flatShading: true }));
+  g.add(body, stripe);
+  g.position.y = 0.25;
+  return g;
+}
+
 class CrossingPhase {
   constructor(crossing) {
     this.def = crossing;
@@ -636,12 +680,33 @@ class CrossingPhase {
     this.crossingStarted = false;
     this.done = false;
     this._hudMsg = '';
-    this.metrics = { strokes: 0, redBlockedPushes: 0, waitMs: 0, crossMs: 0 };
+    this.metrics = { strokes: 0, redBlockedPushes: 0, waitMs: 0, crossMs: 0,
+                     lookBothDone: 0, ballChaseAttempts: 0 };
     this._curbArriveT = null; this._crossStartT = null; this._crossEndT = null;
+    // R2 승격(crosswalk-core_v0.1.md, 확정) — 3단계 반복 구조: 1회=연습, 2회=반복, 마지막=적용
+    this.repsTotal = crossing.reps || 1;
+    this.repIdx = 0; // 0-base 현재 회차
+    this.lookRequired = !!crossing.lookBothWays;
+    this.lookState = 'none'; // 'none' -> 'left' -> 'done' (좌→우 순서 강제, 비처벌)
+    this.lookHoldStart = null;
+    this.ballRep = crossing.ballRep || 0; // 1-base, 회차 고정 배치(무작위 아님)
+    this.ball = null; this.ballState = 'idle'; this._chasing = false;
     avatar.position.set(0, 0, 0);
-    hudStep.textContent = '';
+    hudStep.textContent = this.repsTotal > 1 ? `1 / ${this.repsTotal}` : '';
     setHotbar(null);
     videoWrap.classList.add('hidden');
+  }
+
+  _prepareNextRep(now) {
+    this.z = 0; this.x = 0; this.speed = 0;
+    this.crossingStarted = false;
+    this.lookState = 'none'; this.lookHoldStart = null;
+    this._curbArriveT = null; this._crossStartT = null; this._crossEndT = null;
+    this.ballState = 'idle'; this._chasing = false;
+    if (this.ball) { navScene.remove(this.ball); this.ball = null; }
+    this.startT = now; // 매 회차 빨간불부터 새로 시작 — 멈춘다·살핀다·건넌다를 매번 온전히 요구
+    hudStep.textContent = `${this.repIdx + 1} / ${this.repsTotal}`;
+    setInstruction('한 번 더 건너요!');
   }
 
   lightState(now) {
@@ -655,7 +720,7 @@ class CrossingPhase {
   }
 
   setHud(msg) {
-    if (msg !== this._hudMsg) { this._hudMsg = msg; hudInstruction.textContent = msg; }
+    if (msg !== this._hudMsg) { this._hudMsg = msg; setInstruction(msg); }
   }
 
   update(input, dt) {
@@ -690,8 +755,29 @@ class CrossingPhase {
       hint = '횡단보도까지 걸어가요';
     } else if (!this.crossingStarted) {
       if (this._curbArriveT == null) this._curbArriveT = now;
-      // 연석: 초록불에만 출발 (깜빡일 때는 다음 신호를 기다려요 — 보행 교육 원칙)
-      if (light === 'green') {
+      // 좌→우 살핌(R2, 확정) — 순서 강제, 비처벌: 틀린 순서는 그냥 다시 살피면 될 뿐
+      if (this.lookRequired && this.lookState !== 'done') {
+        const lean = input.lean;
+        if (this.lookState === 'none') {
+          if (lean < -PARAMS.LEAN_DEADZONE) {
+            if (!this.lookHoldStart) this.lookHoldStart = now;
+            if (now - this.lookHoldStart > 400) {
+              this.lookState = 'left'; this.lookHoldStart = null; sfx.blinkTick();
+            }
+          } else this.lookHoldStart = null;
+        } else if (this.lookState === 'left') {
+          if (lean > PARAMS.LEAN_DEADZONE) {
+            if (!this.lookHoldStart) this.lookHoldStart = now;
+            if (now - this.lookHoldStart > 400) {
+              this.lookState = 'done'; this.lookHoldStart = null;
+              this.metrics.lookBothDone++; sfx.blinkTick();
+            }
+          } else this.lookHoldStart = null;
+        }
+      }
+      const canStart = light === 'green' && (!this.lookRequired || this.lookState === 'done');
+      // 연석: 초록불 + (필요 시) 살핌 완료에만 출발 (깜빡일 때는 다음 신호를 기다려요)
+      if (canStart) {
         this.crossingStarted = true;
         this._crossStartT = now;
         this.metrics.waitMs = Math.round(now - this._curbArriveT);
@@ -699,11 +785,40 @@ class CrossingPhase {
         canMove = false;
         if (input.strokeEvent) this.metrics.redBlockedPushes++; // 신호 대기 중 출발 시도 (관찰 지표)
         hint = light === 'red' ? '🔴 빨간불! 멈춰서 기다려요'
-                               : '🟢 깜빡깜빡 — 다음 초록불을 기다려요';
+             : light === 'blink' ? '🟢 깜빡깜빡 — 다음 초록불을 기다려요'
+             : this.lookState === 'none' ? '👀 먼저 왼쪽을 살펴봐요'
+             : '👀 이제 오른쪽도 살펴봐요';
+      }
+    }
+    // 공 시나리오(R2 §C, 회차 고정) — 실제 위치는 절대 움직이지 않음(연석 잠금과 동일 원리)
+    if (this.ballRep && this.repIdx + 1 === this.ballRep && this.crossingStarted && inRoad) {
+      if (this.ballState === 'idle' && now - this._crossStartT > 1200) {
+        this.ballState = 'rolling';
+        this.ball = buildBall();
+        this.ball.position.set(-8, 0.25, this.z);
+        navScene.add(this.ball);
+        this._ballStartT = now;
+      }
+      if (this.ballState === 'rolling') {
+        const t = (now - this._ballStartT) / 1500;
+        this.ball.position.x = -8 + Math.min(1, t) * 16;
+        this.ball.position.z = this.z;
+        this.ball.rotation.z -= dt * 8;
+        if (input.lean > PARAMS.LEAN_DEADZONE) {
+          if (!this._chasing) { this.metrics.ballChaseAttempts++; this._chasing = true; }
+        } else this._chasing = false;
+        if (t >= 1) {
+          this.ballState = 'done';
+          navScene.remove(this.ball); this.ball = null;
+        }
       }
     }
     if (this.crossingStarted && inRoad) {
-      if (light === 'red') {
+      if (this.ballState === 'rolling') {
+        hint = '⚽ 공이 굴러가요! 기다려요, 따라가지 않아요';
+      } else if (this.ballState === 'done' && now - this._ballStartT < 2000) {
+        hint = '잘 기다렸어요! 공은 어른이 주워줄 거예요';
+      } else if (light === 'red') {
         hint = '차들이 기다려 줘요 — 끝까지 건너가요';
       } else if (light === 'blink') {
         hint = '깜빡여요 — 서둘러 건너요!';
@@ -711,7 +826,7 @@ class CrossingPhase {
         hint = '🟢 초록불! 좌우를 살피며 건너가요';
       }
     } else if (this.crossingStarted && !inRoad && !beforeCurb) {
-      hint = '다 건넜어요! 마트로 가요';
+      hint = '다 건넜어요!';
     }
     this.setHud(hint || '');
 
@@ -757,7 +872,13 @@ class CrossingPhase {
     avatar.userData.armL.rotation.x = swing;
     avatar.userData.armR.rotation.x = -swing;
     navCam.position.set(this.x * 0.7, 2.4, this.z + 6);
-    navCam.lookAt(this.x, 1, this.z - 4);
+    // 살핌 구간: lean으로 카메라가 실제 좌우 도로를 비춤(spatial-experience §"시선의 변화" 적용)
+    if (this.lookRequired && !this.crossingStarted && this.lookState !== 'done') {
+      const yaw = Math.max(-1, Math.min(1, input.lean)) * 6;
+      navCam.lookAt(this.x + yaw, 1, this.z - 4);
+    } else {
+      navCam.lookAt(this.x, 1, this.z - 4);
+    }
 
     if (this._crossStartT && !this._crossEndT && this.z <= XW.ROAD_B) {
       this._crossEndT = now;
@@ -765,11 +886,15 @@ class CrossingPhase {
     }
 
     hudProgressFill.style.width = `${Math.min(100, (-this.z) / XW.LEN * 100)}%`;
-    if (this.z <= XW.GOAL) this.done = true;
+    if (this.z <= XW.GOAL) {
+      this.repIdx++;
+      if (this.repIdx >= this.repsTotal) this.done = true;
+      else this._prepareNextRep(now);
+    }
   }
 
   render() { renderer.render(navScene, navCam); }
-  dispose() { navScene.remove(this.course); }
+  dispose() { navScene.remove(this.course); if (this.ball) navScene.remove(this.ball); }
 }
 
 /* ---------- 장소(place) 데코 — 스테이션·고르기 공용 ---------- */
@@ -867,7 +992,7 @@ class SelectPhase {
     this.cards.forEach(c => this.root.remove(c.mesh, c.ring));
     this.cards = [];
     const step = this.station.steps[this.stepIdx];
-    hudInstruction.textContent = step.prompt;
+    setInstruction(step.prompt);
     hudStep.textContent = `${this.stepIdx + 1} / ${this.station.steps.length}`;
     hudProgressFill.style.width = `${this.stepIdx / this.station.steps.length * 100}%`;
     // 핫바: 스텝 슬롯 (현재 스텝 하이라이트 — 정답 이모지는 완료된 스텝만 공개)
@@ -1077,7 +1202,7 @@ class StationPhase {
     applyPlaceDecor(this.root, station);
 
     videoWrap.classList.remove('hidden'); // 거울 모드: 영상 표시
-    hudInstruction.textContent = station.instruction || station.title;
+    setInstruction(station.instruction || station.title);
     this.updateHudStep();
   }
 
@@ -1413,7 +1538,7 @@ class LivingScenePhase {
 
     this.handFSM = { L: makeLSHandFSM(), R: makeLSHandFSM() };
     applyPlaceDecor(this.root, scene);
-    hudInstruction.textContent = scene.purpose || scene.title;
+    setInstruction(scene.purpose || scene.title);
     this._assistPropId = null;
     this.updateHudStep();
   }
@@ -1596,7 +1721,7 @@ class LivingScenePhase {
     // 이후엔 assist 1단계(개별 occupation 힌트)만으로 다시 떠올리게 한다.
     if (this.scene.listRevealS && !this._purposeSwitched && elapsedS > this.scene.listRevealS) {
       this._purposeSwitched = true;
-      hudInstruction.textContent = this.scene.genericPrompt || this.scene.title;
+      setInstruction(this.scene.genericPrompt || this.scene.title);
     }
 
     const newAssist = this.done ? this.assistLevel
@@ -1885,7 +2010,9 @@ function entrySummary(e, i) {
   }
   if (e.type === 'crossing') {
     return `${head} — ${sec}초 · 신호대기 ${(e.waitMs / 1000).toFixed(1)}초 · 건너기 ${(e.crossMs / 1000).toFixed(1)}초`
-      + ` · 대기 중 출발시도 ${e.redBlockedPushes} · 스트로크 ${e.strokes}`;
+      + ` · 대기 중 출발시도 ${e.redBlockedPushes} · 스트로크 ${e.strokes}`
+      + (e.lookBothDone ? ` · 좌우살핌 ${e.lookBothDone}회` : '')
+      + (e.ballChaseAttempts ? ` · 공 따라가려는 시도 ${e.ballChaseAttempts}회(참고용)` : '');
   }
   if (e.wrongSelects != null) {
     return `${head} — ${sec}초 · 스텝 ${e.steps} · 오선택 ${e.wrongSelects}`
@@ -2126,7 +2253,7 @@ const REPORT_COLS = ['idx', 'type', 'title', 'place', 'lv', 'ms', 'strokes', 'gr
   'releases', 'misplaced', 'wrongItem', 'budgetOvers', 'wrongSelects', 'steps', 'trackLosses',
   'assistLevel', 'stars', 'redBlockedPushes', 'waitMs', 'crossMs',
   'gatesPassed', 'gatesTotal', 'forksCorrect', 'forksTotal', 'laneDeviationAvg',
-  'flagsSeen', 'flagsTotal'];
+  'flagsSeen', 'flagsTotal', 'lookBothDone', 'ballChaseAttempts'];
 document.getElementById('btnSaveJson').addEventListener('click', () => {
   downloadBlob(JSON.stringify(report, null, 2), 'application/json',
     `adl-report_${report.startedAt.replace(/[:.]/g, '-')}.json`);
@@ -2200,6 +2327,7 @@ const btnMute = document.getElementById('btnMute');
 function setMuted(v) {
   muted = v;
   btnMute.textContent = muted ? '🔇' : '🔊';
+  if (muted && 'speechSynthesis' in window) window.speechSynthesis.cancel();
 }
 btnMute.addEventListener('click', () => setMuted(!muted));
 window.addEventListener('keydown', e => {
@@ -2291,7 +2419,11 @@ function cognitiveTags(item) {
     else if (item.courseType === 'forkMemory') t.unshift('공간기억');
     return t;
   }
-  if (item.type === 'crossing') return ['충동억제', '인과추론'];
+  if (item.type === 'crossing') {
+    const t = ['충동억제', '인과추론'];
+    if (item.lookBothWays) t.unshift('시각탐색');
+    return t;
+  }
   if (item.type === 'livingScene') {
     const props = item.props || [];
     const t = [];
@@ -2324,7 +2456,8 @@ function stageLabel(item) {
     return { emoji: '🏃', title: `걷기 · ${THEME_NAMES[item.theme] || ''}`,
       type: `이동 · Lv.${item.difficulty || item.level}` };
   if (item.type === 'crossing')
-    return { emoji: '🚦', title: '횡단보도 건너기', type: `신호 지키기 · Level ${item.level}` };
+    return { emoji: '🚦', title: '횡단보도 건너기',
+      type: `신호 지키기${item.reps > 1 ? ` · ${item.reps}회 반복` : ''} · Level ${item.level}` };
   if (item.type === 'livingScene')
     return { emoji: PLACES[item.place]?.emoji || '🏠', title: item.title,
       type: '생활 장면' + (item.difficulty ? ` · Lv.${item.difficulty}` : '') };
