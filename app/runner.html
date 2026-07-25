@@ -87,6 +87,21 @@
   .stageCard .scStars{font-size:12px; min-height:14px; color:var(--ui-highlight);}
 
   /* ---- 리포트 ---- */
+  /* ---- 성장 제안 카드 (P3 — 치료사 승인형 적응) ---- */
+  #suggestCard{max-width:560px; width:90%; text-align:left;
+    background:var(--ui-bg); border:3px solid var(--grass); box-shadow:0 var(--px) 0 var(--ui-border);
+    padding:12px 16px; font-family:var(--font-body);}
+  #suggestCard h3{font-size:13px; margin:0 0 8px; color:var(--text); font-family:var(--font-display);}
+  #suggestCard .c2note{font-size:11px; color:var(--muted); font-weight:400; font-family:var(--font-body);}
+  #suggestList .sg{font-size:12px; color:var(--text); line-height:1.7;}
+  #suggestList .sg .lv{font-family:var(--font-display); color:var(--ui-highlight);}
+  #suggestList .sg .up{color:var(--grass); font-family:var(--font-display);}
+  #suggestList .sg .down{color:var(--warn); font-family:var(--font-display);}
+  #suggestList .sg .why{color:var(--muted);}
+  #suggestList .more{font-size:11px; color:var(--muted); margin-top:2px;}
+  .suggestBtns{display:flex; gap:8px; margin-top:10px;}
+  button.mini.yes{background:var(--grass); color:#fff; text-shadow:1px 1px 0 rgba(0,0,0,.4);}
+
   /* ---- 훈련 프로파일 (회차 기록 시각화) ---- */
   #vizBox{max-width:640px; width:90%; text-align:left;
     background:var(--ui-bg); border:3px solid var(--ui-border); box-shadow:0 var(--px) 0 var(--ui-border);
@@ -214,6 +229,14 @@
   <div id="startOverlay" class="overlay">
     <h1 id="startTitle">I CAN DO ADL</h1>
     <p id="startDesc">불러오는 중…</p>
+    <div id="suggestCard" class="hidden">
+      <h3>🌱 성장 제안 <span class="c2note">지난 회차 기록 기반 · 치료사 확인 후 적용</span></h3>
+      <div id="suggestList"></div>
+      <div class="suggestBtns">
+        <button id="btnSuggestYes" class="mini yes">좋아요, 바꿔요</button>
+        <button id="btnSuggestNo" class="mini">이번엔 그대로</button>
+      </div>
+    </div>
     <div class="startBtns">
       <button id="btnStart" class="big">🌟 전체 하루 시작</button>
       <button id="btnChoose" class="big ghost">🎯 과제 골라 연습</button>

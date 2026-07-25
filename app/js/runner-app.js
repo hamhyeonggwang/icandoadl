@@ -3,7 +3,7 @@
    C2: 카메라 스트림은 온디바이스 소비만, 저장·전송 없음. 페이즈 전환 시 렌더링만 토글. */
 import * as THREE from 'three';
 import { PARAMS } from './params.js';
-import { decodeSession, makeDemoSession, SEGMENT_LENGTHS, GRADING_DEFAULTS } from './session.js';
+import { decodeSession, makeDemoSession, SEGMENT_LENGTHS, GRADING_DEFAULTS, applyDifficultyPreset } from './session.js';
 import { libMeta, PLACES } from './library-meta.js';
 import { buildMesh } from './library-mesh.js';
 
@@ -54,7 +54,29 @@ function loadSession() {
   }
   return makeDemoSession();
 }
-let session = loadSession();
+/* P3: 수락된 성장 제안은 과제 제목 기준 오버라이드로 저장되어 다음 회차에도 유지된다.
+   C2 준수: 레벨 숫자만 저장, 이 기기 한정. '기록 지우기'로 함께 초기화. */
+const OVERRIDE_KEY = 'adl-level-overrides-v1';
+const SUGGEST_KEY = 'adl-suggest-v1';
+
+function loadJSONKey(key, fallback) {
+  try { return JSON.parse(localStorage.getItem(key)) || fallback; }
+  catch { return fallback; }
+}
+
+function applyLevelOverrides(sess) {
+  const ov = loadJSONKey(OVERRIDE_KEY, {});
+  for (const f of sess.flow || []) {
+    const lv = ov[f.title];
+    if (f.difficulty && lv >= 1 && lv <= 5 && lv !== f.difficulty) {
+      f.difficulty = lv;
+      applyDifficultyPreset(f);
+    }
+  }
+  return sess;
+}
+
+let session = applyLevelOverrides(loadSession());
 
 function updateStartTexts() {
   startTitle.textContent = session.title || 'ADL 훈련 세션';
@@ -69,8 +91,9 @@ document.getElementById('fileSession').addEventListener('change', async e => {
   const file = e.target.files[0];
   if (!file) return;
   try {
-    session = JSON.parse(await file.text());
+    session = applyLevelOverrides(JSON.parse(await file.text()));
     updateStartTexts();
+    renderSuggestCard();
   } catch {
     startDesc.textContent = '세션 파일을 읽을 수 없어요 — 에디터에서 저장한 .adl.json 파일인지 확인해 주세요.';
   }
@@ -1843,6 +1866,67 @@ function renderViz(prev, history) {
   return domains;
 }
 
+/* ---------- 성장 제안 (P3 — 자동 변경이 아니라 제안, 치료사/아동이 승인) ----------
+   규칙(투명): 도움 0 + 핵심 지표 충족 → 한 단계 상향 제안 / 도움 2 발동 → 한 단계 하향 제안.
+   대상 = difficulty(L1~5)가 지정된 옮기기·고르기·생활장면. crossing·segment는 자체 레벨(P4). */
+function computeSuggestions(entries) {
+  const out = [];
+  for (const e of entries) {
+    if (!e.lv) continue;
+    const isSelect = e.wrongSelects != null;
+    const isMove = e.graspAttempts != null && !isSelect;
+    if (!isSelect && !isMove) continue;
+    if (e.assistLevel === 0 && e.lv < 5) {
+      const ok = isSelect
+        ? e.wrongSelects === 0
+        : (e.graspFails <= 1 && (e.misplaced || 0) <= 1 && !(e.wrongItem > 0));
+      if (ok) out.push({ title: e.title, from: e.lv, to: e.lv + 1, dir: 'up', reason: '도움 없이 안정 수행' });
+    } else if (e.assistLevel >= 2 && e.lv > 1) {
+      out.push({ title: e.title, from: e.lv, to: e.lv - 1, dir: 'down', reason: '도움이 많이 필요했어요' });
+    }
+  }
+  return out;
+}
+
+/* 현재 세션에 실제로 존재하는 과제만 남긴 대기 제안 */
+function pendingSuggestions() {
+  const sugg = loadJSONKey(SUGGEST_KEY, []);
+  const titles = new Set((session.flow || []).filter(f => f.difficulty).map(f => f.title));
+  return sugg.filter(sg => titles.has(sg.title));
+}
+
+function renderSuggestCard() {
+  const card = document.getElementById('suggestCard');
+  const pending = pendingSuggestions();
+  if (!pending.length) { card.classList.add('hidden'); return; }
+  const SHOW = 4;
+  const rows = pending.slice(0, SHOW).map(sg =>
+    `<div class="sg">${sg.title} <span class="lv">L${sg.from}</span>` +
+    `<span class="${sg.dir}"> ${sg.dir === 'up' ? '▲' : '▼'} L${sg.to}</span>` +
+    ` <span class="why">· ${sg.reason}</span></div>`).join('');
+  const more = pending.length > SHOW ? `<div class="more">외 ${pending.length - SHOW}개 과제</div>` : '';
+  document.getElementById('suggestList').innerHTML = rows + more;
+  card.classList.remove('hidden');
+}
+
+document.getElementById('btnSuggestYes').addEventListener('click', () => {
+  const pending = pendingSuggestions();
+  const ov = loadJSONKey(OVERRIDE_KEY, {});
+  for (const sg of pending) {
+    const f = (session.flow || []).find(x => x.title === sg.title && x.difficulty);
+    if (f) { f.difficulty = sg.to; applyDifficultyPreset(f); }
+    ov[sg.title] = sg.to;
+  }
+  localStorage.setItem(OVERRIDE_KEY, JSON.stringify(ov));
+  localStorage.removeItem(SUGGEST_KEY);
+  document.getElementById('suggestCard').classList.add('hidden');
+  startDesc.textContent = `과제 ${pending.length}개의 수준을 바꿨어요 — 오늘도 화이팅!`;
+});
+document.getElementById('btnSuggestNo').addEventListener('click', () => {
+  localStorage.removeItem(SUGGEST_KEY);
+  document.getElementById('suggestCard').classList.add('hidden');
+});
+
 function showCompletion() {
   const totalStars = report.entries.reduce((s, e) => s + (e.stars || 0), 0);
   const totalSec = Math.round(report.entries.reduce((s, e) => s + e.ms, 0) / 1000);
@@ -1859,6 +1943,12 @@ function showCompletion() {
   report.runNo = history.length + 1;
   history.push({ at: report.startedAt, title: report.title, stars: totalStars, domains });
   saveHistory(history);
+
+  // P3: 이번 회차 수행으로 성장 제안 생성 (다음 시작 화면까지 유지)
+  const sugg = computeSuggestions(report.entries);
+  if (sugg.length) localStorage.setItem(SUGGEST_KEY, JSON.stringify(sugg));
+  else localStorage.removeItem(SUGGEST_KEY);
+  renderSuggestCard();
 
   const box = document.getElementById('reportBox');
   box.innerHTML = `<h3>치료사용 기록 <span class="c2note">(온디바이스 · 영상/개인정보 없음)</span></h3>`
@@ -1897,9 +1987,12 @@ document.getElementById('btnHistCsv').addEventListener('click', () => {
     `adl-history_${new Date().toISOString().slice(0, 10)}.csv`);
 });
 document.getElementById('btnHistClear').addEventListener('click', () => {
-  if (!confirm('이 컴퓨터에 저장된 회차 기록을 모두 지울까요? (필요하면 먼저 "기록 CSV"로 내보내세요)')) return;
+  if (!confirm('이 컴퓨터에 저장된 회차 기록·성장 제안·레벨 조정을 모두 지울까요? (필요하면 먼저 "기록 CSV"로 내보내세요)')) return;
   localStorage.removeItem(HISTORY_KEY);
+  localStorage.removeItem(SUGGEST_KEY);
+  localStorage.removeItem(OVERRIDE_KEY);
   document.getElementById('vizBox').classList.add('hidden');
+  document.getElementById('suggestCard').classList.add('hidden');
 });
 
 function scheduleFrame(fn) {
@@ -2151,9 +2244,10 @@ document.getElementById('btnMenuBack').addEventListener('click', () => {
 
 /* 초기 UI */
 updateStartTexts();
+renderSuggestCard();
 resize();
 loop();
 
 /* 개발 진단 훅 (콘솔 전용 — 게임 로직 비관여) */
 window.__dbg = { get driver() { return driver; }, get current() { return current; }, get session() { return session; },
-  navScene, stScene, renderer };
+  navScene, stScene, renderer, computeSuggestions };
