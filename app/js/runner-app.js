@@ -40,7 +40,8 @@ function setHotbar(slots) {
   }
   hotbarEl.innerHTML = slots.map((s, i) =>
     `<div class="vx-slot${s.done ? ' done' : ''}${s.active ? ' active' : ''}">` +
-    `<span class="num">${i + 1}</span><span>${s.icon}</span>` +
+    `<span class="num">${i + 1}</span>` +
+    (s.iconUrl ? `<img class="vx-icon" src="${s.iconUrl}" alt="">` : `<span>${s.icon}</span>`) +
     `${s.done ? '<span class="chk">✔</span>' : ''}</div>`
   ).join('');
   hotbarEl.classList.remove('hidden');
@@ -169,6 +170,40 @@ function setInstruction(text) {
 /* ---------- 렌더러 ---------- */
 const renderer = new THREE.WebGLRenderer({ canvas: glcanvas, alpha: true, antialias: true });
 renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
+
+/* R3(visual-perception_v0.1.md §표상 통일) — 핫바 아이콘을 이모지 대신 실제 복셀 메시
+   스냅샷으로. 목표 확인(핫바)과 실행(장면)이 같은 그림이 되어 형태 항상성 부담을 없앤다.
+   전용 소형 렌더러 1개를 재사용(라이브러리 키별 결과는 캐시 — 매 프레임 렌더 아님). */
+const iconRenderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, preserveDrawingBuffer: true });
+iconRenderer.setSize(72, 72);
+const iconScene = new THREE.Scene();
+const iconCam = new THREE.PerspectiveCamera(32, 1, 0.1, 10);
+iconCam.position.set(1.3, 1.05, 1.8);
+iconCam.lookAt(0, 0, 0);
+iconScene.add(new THREE.AmbientLight('#ffffff', 1.15));
+const iconLight = new THREE.DirectionalLight('#ffffff', 0.85);
+iconLight.position.set(1, 2, 2);
+iconScene.add(iconLight);
+const iconCache = new Map();
+function renderLibIcon(libKey) {
+  const meta = libMeta(libKey, session.assets);
+  if (meta.custom) return null; // GLB는 비동기 로드 — 스냅샷 생략, 이모지로 폴백
+  if (iconCache.has(libKey)) return iconCache.get(libKey);
+  const mesh = buildMesh(libKey, 1, session.assets);
+  const box = new THREE.Box3().setFromObject(mesh);
+  const dim = box.getSize(new THREE.Vector3());
+  const maxDim = Math.max(dim.x, dim.y, dim.z) || 1;
+  const scale = 1.15 / maxDim;
+  mesh.scale.setScalar(scale);
+  const center = box.getCenter(new THREE.Vector3()).multiplyScalar(scale);
+  mesh.position.sub(center);
+  iconScene.add(mesh);
+  iconRenderer.render(iconScene, iconCam);
+  const url = iconRenderer.domElement.toDataURL('image/png');
+  iconScene.remove(mesh);
+  iconCache.set(libKey, url);
+  return url;
+}
 function stageAspect() {
   // 레이아웃 전환 순간 크기가 0이면 NaN이 지오메트리로 번짐 — 16:9 폴백으로 차단
   const w = stage.clientWidth, h = stage.clientHeight;
@@ -387,7 +422,9 @@ function makeHandCursor() {
   return g;
 }
 const cursors = { L: makeHandCursor(), R: makeHandCursor() };
-const CLS_COLORS = { OPEN: 0x68d391, FIST: 0xfc8181, NEUTRAL: 0xe7e9ee };
+/* R3(visual-perception_v0.1.md §커서 의미 재배정): 빨강은 신호등 '멈춤' 전용 색으로 남겨두고
+   잡기(FIST) 커서는 호박색으로 — 앱 전체에서 색 의미를 일관되게 유지(발달장애 대상 원칙) */
+const CLS_COLORS = { OPEN: 0x68d391, FIST: 0xf6ad55, NEUTRAL: 0xe7e9ee };
 
 /* 성공 파티클 */
 const particles = [];
@@ -580,6 +617,31 @@ const XW = {
   STOPLINE: 5,      // 차량 정지선 |x|
 };
 
+/* 보행신호등 사람 픽토그램(R3) — pose:'stand'(정지)|'walk'(보행). 한 Material을 모든 부위가
+   공유하므로 기존 update() 코드의 `.material.emissiveIntensity` 제어가 그대로 동작한다. */
+function buildPersonPictogram(pose, color, emissiveColor) {
+  const mat = new THREE.MeshStandardMaterial({ color, emissive: emissiveColor, emissiveIntensity: 0, flatShading: true });
+  const g = new THREE.Group();
+  const head = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.14, 0.06), mat);
+  head.position.y = 0.42;
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.26, 0.06), mat);
+  body.position.y = 0.2;
+  g.add(head, body);
+  if (pose === 'walk') {
+    const legL = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.24, 0.06), mat);
+    legL.position.set(-0.08, -0.06, 0); legL.rotation.z = 0.35;
+    const legR = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.24, 0.06), mat);
+    legR.position.set(0.08, -0.06, 0); legR.rotation.z = -0.35;
+    g.add(legL, legR);
+  } else {
+    const legs = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.24, 0.06), mat);
+    legs.position.y = -0.06;
+    g.add(legs);
+  }
+  g.material = mat; // 편의 별칭 — Group에는 원래 없는 속성이지만 기존 호출부 무변경 유지
+  return g;
+}
+
 function buildCrossingCourse() {
   const g = new THREE.Group();
   const std = c => new THREE.MeshStandardMaterial({ color: c });
@@ -605,15 +667,15 @@ function buildCrossingCourse() {
     g.add(stripe);
   }
   // 보행 신호등 (건너편 우측 — 실제 배치처럼 마주 봄)
+  // R3(visual-perception §신호등 픽토그램): 단색 원 램프 대신 실물 보행신호등과 같은
+  // 사람 그림(정지=서있는 사람 / 보행=걷는 사람)으로 — 실물 전이(일반화)에 유리한 동일 부호.
   const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 3.4), std('#4a5568'));
   pole.position.set(2.9, 1.7, XW.ROAD_B - 0.8);
   const housing = new THREE.Mesh(new THREE.BoxGeometry(0.7, 1.3, 0.35), std('#1a202c'));
   housing.position.set(2.9, 3.2, XW.ROAD_B - 0.8);
-  const redLamp = new THREE.Mesh(new THREE.CircleGeometry(0.22, 16),
-    new THREE.MeshStandardMaterial({ color: '#fc8181', emissive: '#e53e3e', emissiveIntensity: 1.2 }));
-  redLamp.position.set(2.9, 3.5, XW.ROAD_B - 0.6);
-  const greenLamp = new THREE.Mesh(new THREE.CircleGeometry(0.22, 16),
-    new THREE.MeshStandardMaterial({ color: '#68d391', emissive: '#2f855a', emissiveIntensity: 0 }));
+  const redLamp = buildPersonPictogram('stand', '#fc8181', '#e53e3e');
+  redLamp.position.set(2.9, 3.55, XW.ROAD_B - 0.6);
+  const greenLamp = buildPersonPictogram('walk', '#68d391', '#2f855a');
   greenLamp.position.set(2.9, 2.9, XW.ROAD_B - 0.6);
   g.add(pole, housing, redLamp, greenLamp);
   // 건너편 마트 파사드
@@ -1226,6 +1288,7 @@ class StationPhase {
     // 핫바: 목표 사물 슬롯 (방해 자극 제외)
     setHotbar(this.items.filter(i => !i.def.distractor).map(i => ({
       icon: libMeta(i.def.lib, session.assets).emoji,
+      iconUrl: renderLibIcon(i.def.lib),
       done: i.state === 'placed',
     })));
   }
@@ -1533,6 +1596,11 @@ class LivingScenePhase {
       const p = { def, id: def.id, nx: def.pos[0], ny: def.pos[1],
         state: 'free', visible: !def.startHidden, mesh: null, anchor: null };
       if (p.visible) this._buildPropMesh(p);
+      // R3(visual-perception §역할별 시각 계층): carryToZone은 그동안 목표 지점이 화면에
+      // 전혀 표시되지 않았다(StationPhase의 zoneRing과 달리) — 방해자극 제외하고 표시.
+      if (def.interaction === 'carryToZone' && def.zone && !def.distractor) {
+        p.zoneRing = this._buildZoneRing(def.zone);
+      }
       return p;
     });
 
@@ -1599,6 +1667,18 @@ class LivingScenePhase {
     p.mesh = mesh;
   }
 
+  _buildZoneRing(zone) {
+    const w = toWorld(zone.pos[0], zone.pos[1]);
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(zone.radius * 0.9, zone.radius, 32),
+      new THREE.MeshBasicMaterial({ color: '#4fd1c5', transparent: true, opacity: 0.5, side: THREE.DoubleSide })
+    );
+    ring.position.set(w.x, w.y, 0.02);
+    ring.scale.y = 1 / stageAspect(); // 화면상 정원 유지(정규화 좌표계는 종횡비로 y가 압축됨)
+    this.root.add(ring);
+    return ring;
+  }
+
   propById(id) { return this.props.find(p => p.id === id); }
 
   requiredProps() { return this.props.filter(p => p.def.required); }
@@ -1610,6 +1690,7 @@ class LivingScenePhase {
     hudProgressFill.style.width = `${req.length ? done / req.length * 100 : 100}%`;
     setHotbar(this.props.filter(p => p.visible && !p.def.distractor).map(p => ({
       icon: libMeta(p.def.lib, session.assets).emoji,
+      iconUrl: renderLibIcon(p.def.lib),
       done: p.state === 'done',
     })));
   }
@@ -1706,6 +1787,7 @@ class LivingScenePhase {
     p.state = 'done';
     p.nx = z.pos[0]; p.ny = z.pos[1];
     if (p.mesh) { const w = toWorld(p.nx, p.ny); p.mesh.scale.multiplyScalar(0.75); p.mesh.position.set(w.x, w.y, 0.1); }
+    if (p.zoneRing) p.zoneRing.visible = false;
     this.applyOnComplete(p);
     sfx.drop();
     burst(p.nx, p.ny);
