@@ -334,22 +334,32 @@ export function makeDemoSession() {
          { lib: 'shoe', pos: [0.3, 0.68], scale: 1, hand: 'any' }],
         { lib: 'footmat', pos: [0.74, 0.68], scale: 1.3, zoneRadius: 0.13 },
         { difficulty: 2 }),
-      // 엘리베이터 = 버튼 누르기 (항행 아님 — 현장 피드백)
+      // 엘리베이터 = 버튼 누르기 (항행 아님 — 현장 피드백). 실제 패널처럼 2열 5행 버튼 배치.
       sel('엘리베이터 타기', 'elevator', [
-        { prompt: '🛗 1층 버튼을 눌러요',
-          options: [{ label: '2층', emoji: '2️⃣', correct: false },
+        { prompt: '🛗 1층 버튼을 눌러요', cols: 2,
+          options: [{ label: 'B1', emoji: '🅱️', correct: false },
                     { label: '1층', emoji: '1️⃣', correct: true },
-                    { label: '지하', emoji: '🅱️', correct: false }] },
+                    { label: '2층', emoji: '2️⃣', correct: false },
+                    { label: '3층', emoji: '3️⃣', correct: false },
+                    { label: '4층', emoji: '4️⃣', correct: false },
+                    { label: '5층', emoji: '5️⃣', correct: false },
+                    { label: '6층', emoji: '6️⃣', correct: false },
+                    { label: '7층', emoji: '7️⃣', correct: false },
+                    { label: '8층', emoji: '8️⃣', correct: false },
+                    { label: '9층', emoji: '9️⃣', correct: false }] },
       ], 1),
       walk('street', 'short', 2), // 게이트: 정렬 조향
+      // 버스 노선 = 색+번호로 식별(사용자 결정) — 초록 7737을 학교 가는 버스로 지정
       sel('버스 타기', 'busstop', [
-        { prompt: '학교 가는 3번 버스를 골라요',
-          options: [{ label: '3번', emoji: '🚌', correct: true },
-                    { label: '7번', emoji: '🚌', correct: false },
-                    { label: '12번', emoji: '🚌', correct: false }] },
-        { prompt: '버스가 왔어요! 타는 문을 골라요',
-          options: [{ label: '앞문', emoji: '🚪', correct: true },
-                    { label: '뒷문', emoji: '🚫', correct: false }] },
+        { prompt: '학교 가는 초록 7737번 버스를 골라요',
+          options: [{ label: '빨강 1200', emoji: '🔴', correct: false },
+                    { label: '초록 7737', emoji: '🟢', correct: true },
+                    { label: '파랑 730', emoji: '🔵', correct: false }] },
+        // 문 선택(앞문/뒷문)은 실제 탑승 행동과 무관해 억지스럽다는 지적(사용자) — 실제
+        // 탑승 루틴인 교통카드 태그로 교체
+        { prompt: '버스에 올라 교통카드를 태그해요',
+          options: [{ label: '카드 태그', emoji: '💳', correct: true },
+                    { label: '그냥 지나가기', emoji: '🚫', correct: false }] },
       ], 2),
       walk('street', 'short', 3), // 커브: 지속 조향
       // 횡단보도 R2 승격(crosswalk-core_v0.1.md, 확정): 좌→우 살핌 강제·반복 3회·
@@ -419,10 +429,29 @@ export function makeKioskDrillSession() {
     title: '키오스크 사용법 연습',
     flow: [
       sel('키오스크 사용법 연습', 'cafe', [
-        { prompt: '선생님과 함께 딸기주스를 주문해요 — 메뉴에서 골라요',
-          options: [{ label: '딸기주스', emoji: '🍓', correct: true },
-                    { label: '우유', emoji: '🥛', correct: false },
-                    { label: '포도주스', emoji: '🍇', correct: false }] },
+        { prompt: '선생님과 함께 딸기주스를 주문해요 — 메뉴 20가지 중에서 골라요', cols: 5,
+          options: [
+            { label: '딸기주스', emoji: '🍓', correct: true },
+            { label: '아메리카노', emoji: '☕', correct: false },
+            { label: '카페라떼', emoji: '🥛', correct: false },
+            { label: '카푸치노', emoji: '☕', correct: false },
+            { label: '바닐라라떼', emoji: '🍦', correct: false },
+            { label: '카라멜마키아토', emoji: '🍯', correct: false },
+            { label: '콜드브루', emoji: '🧊', correct: false },
+            { label: '초코라떼', emoji: '🍫', correct: false },
+            { label: '녹차라떼', emoji: '🍵', correct: false },
+            { label: '유자차', emoji: '🍋', correct: false },
+            { label: '레몬에이드', emoji: '🍋', correct: false },
+            { label: '자몽에이드', emoji: '🍊', correct: false },
+            { label: '복숭아아이스티', emoji: '🍑', correct: false },
+            { label: '포도주스', emoji: '🍇', correct: false },
+            { label: '우유', emoji: '🥛', correct: false },
+            { label: '코코아', emoji: '🟤', correct: false },
+            { label: '밀크쉐이크', emoji: '🥤', correct: false },
+            { label: '스무디', emoji: '🧃', correct: false },
+            { label: '에스프레소', emoji: '🖤', correct: false },
+            { label: '아이스티', emoji: '🧋', correct: false },
+          ] },
         { prompt: '결제 버튼을 눌러요',
           options: [{ label: '결제', emoji: '💳', correct: true },
                     { label: '취소', emoji: '❌', correct: false }] },

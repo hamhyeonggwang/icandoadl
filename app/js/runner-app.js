@@ -1063,12 +1063,19 @@ class SelectPhase {
       done: i < this.stepIdx,
       active: i === this.stepIdx,
     })));
+    // 다다열 그리드 지원(step.cols) — 옵션이 많은 스텝(엘리베이터 층 버튼·카페 메뉴 등)용.
+    // cols 미지정 시 기존과 동일하게 한 줄 정렬(rows=1) — 회귀 없음.
     const n = step.options.length;
-    const W = 0.17, H = 0.21; // 월드(x-정규화) 단위 카드 크기
+    const cols = step.cols || n;
+    const rows = Math.ceil(n / cols);
     const h = 1 / stageAspect();
+    const W = Math.min(0.17, 0.94 / cols - 0.02);
+    const H = Math.min(0.21, (h * 0.9) / rows - 0.02);
+    const gapX = W + 0.03, gapY = H + 0.025;
     step.options.forEach((opt, i) => {
-      const cx = 0.5 + (i - (n - 1) / 2) * (W + 0.05);
-      const cy = -h * 0.52;
+      const col = i % cols, row = Math.floor(i / cols);
+      const cx = 0.5 + (col - (cols - 1) / 2) * gapX;
+      const cy = -h * 0.5 + (row - (rows - 1) / 2) * gapY;
       const tex = makeCardTexture(opt);
       const mesh = new THREE.Mesh(
         new THREE.PlaneGeometry(W, H),
