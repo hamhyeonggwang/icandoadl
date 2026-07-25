@@ -1204,7 +1204,8 @@ class LivingScenePhase {
     this.assistLevel = 0;
     this.userState = { ...(scene.userState || {}) };
     this.metrics = { graspAttempts: 0, graspFails: 0, releases: 0, misplaced: 0,
-                     trackLosses: 0, assistLevel: 0, stars: 0 };
+                     trackLosses: 0, assistLevel: 0, stars: 0, wrongItem: 0 };
+    this._purposeSwitched = false;
 
     // 배경(diegetic mirror 장면 전용 — 웹캠이 화면 전체가 아니라 거울에만 나타날 때 필요)
     if (scene.roomBackdrop) this._setupBackdrop(scene.roomBackdrop);
@@ -1303,7 +1304,7 @@ class LivingScenePhase {
     const done = req.filter(p => p.state === 'done').length;
     hudStep.textContent = `${done} / ${req.length}`;
     hudProgressFill.style.width = `${req.length ? done / req.length * 100 : 100}%`;
-    setHotbar(this.props.filter(p => p.visible).map(p => ({
+    setHotbar(this.props.filter(p => p.visible && !p.def.distractor).map(p => ({
       icon: libMeta(p.def.lib, session.assets).emoji,
       done: p.state === 'done',
     })));
@@ -1365,30 +1366,60 @@ class LivingScenePhase {
     }
   }
 
+  /* 존 밖/부적합 반납 — 실패가 아니라 "되돌아옴" (P9). 잠깐 안내문을 띄우고 사라진다. */
+  bounceProp(p, msg) {
+    p.state = 'free';
+    if (msg) {
+      banner.textContent = msg;
+      banner.classList.remove('hidden');
+      clearTimeout(this._bounceT);
+      this._bounceT = setTimeout(() => { if (!this.done) banner.classList.add('hidden'); }, 1400);
+    }
+  }
+
   completeCarryToZone(k, f, p, now) {
     f.carryId = null; f.openHoldStart = null; f.fsm = 'RELEASE';
     this.metrics.releases++;
     const z = p.def.zone;
     const d = Math.hypot(p.nx - z.pos[0], p.ny - z.pos[1]);
-    if (d <= z.radius * this.radiusScale()) {
-      p.state = 'done';
-      p.nx = z.pos[0]; p.ny = z.pos[1];
-      if (p.mesh) { const w = toWorld(p.nx, p.ny); p.mesh.scale.multiplyScalar(0.75); p.mesh.position.set(w.x, w.y, 0.1); }
-      this.applyOnComplete(p);
-      sfx.drop();
-      burst(p.nx, p.ny);
-      this.updateHudStep();
-      this.checkExit();
-    } else {
-      p.state = 'free'; // 존 밖 → 그 자리에 남음, 재시도 가능 (실패 아님)
+    if (d > z.radius * this.radiusScale()) {
       this.metrics.misplaced++;
+      this.bounceProp(p); // 존 밖 → 그 자리에 남음, 재시도 가능 (실패 아님)
+      return;
     }
+    if (p.def.distractor) {
+      // 목록에 없는 물건(유혹) — 선택적 주의·충동 억제. 담아도 되돌아올 뿐, 벌점 없음.
+      this.metrics.wrongItem++;
+      tone(294, 0.25, 'sine', 0.1); tone(262, 0.3, 'sine', 0.1, 0.15);
+      this.bounceProp(p, '🙅 심부름 목록에 없어요 — 다시 골라봐요');
+      return;
+    }
+    if (p.def.scanZone && !p._scanned) {
+      // ZONE_PASS 신규 판정 — 계산대를 지나야 장바구니 담기가 완료된다(P5: 순서가 결과를 만든다)
+      this.bounceProp(p, '📷 계산대를 먼저 지나가야 해요');
+      return;
+    }
+    p.state = 'done';
+    p.nx = z.pos[0]; p.ny = z.pos[1];
+    if (p.mesh) { const w = toWorld(p.nx, p.ny); p.mesh.scale.multiplyScalar(0.75); p.mesh.position.set(w.x, w.y, 0.1); }
+    this.applyOnComplete(p);
+    sfx.drop();
+    burst(p.nx, p.ny);
+    this.updateHudStep();
+    this.checkExit();
   }
 
   update(input, dt) {
     const now = performance.now();
-
     const elapsedS = (now - this.startT) / 1000;
+
+    // 작업기억 유발: 목적(심부름 목록)을 잠깐만 보여주고 일반 안내문으로 전환.
+    // 이후엔 assist 1단계(개별 occupation 힌트)만으로 다시 떠올리게 한다.
+    if (this.scene.listRevealS && !this._purposeSwitched && elapsedS > this.scene.listRevealS) {
+      this._purposeSwitched = true;
+      hudInstruction.textContent = this.scene.genericPrompt || this.scene.title;
+    }
+
     const newAssist = this.done ? this.assistLevel
       : elapsedS > this.grading.assistTimeoutS * 2 ? 2 : elapsedS > this.grading.assistTimeoutS ? 1 : 0;
     if (newAssist !== this.assistLevel) {
@@ -1462,6 +1493,15 @@ class LivingScenePhase {
 
           if (p.def.interaction === 'carryToZone') {
             p.nx = hand.pos.x; p.ny = hand.pos.y;
+            // ZONE_PASS: 운반 중 계산대 존을 지나면 스캔됨(경유 판정 — 놓기가 아니라 통과)
+            if (p.def.scanZone && !p._scanned) {
+              const sd = Math.hypot(p.nx - p.def.scanZone.pos[0], p.ny - p.def.scanZone.pos[1]);
+              if (sd <= p.def.scanZone.radius * this.radiusScale()) {
+                p._scanned = true;
+                tone(880, 0.08, 'square', 0.12);
+                burst(p.nx, p.ny, 0x68d391);
+              }
+            }
             if (hand.cls === 'OPEN' && Math.abs(hand.vy) <= PARAMS.RELEASE_MAX_SPEED) {
               if (!f.openHoldStart) f.openHoldStart = now;
               if (now - f.openHoldStart >= this.grading.tReleaseMs) this.completeCarryToZone(k, f, p, now);
@@ -1830,10 +1870,12 @@ function cognitiveTags(item) {
   if (item.type === 'crossing') return ['충동억제', '인과추론'];
   if (item.type === 'livingScene') {
     const props = item.props || [];
-    const t = ['순서기억'];
+    const t = [];
+    if (item.listRevealS) t.push('작업기억');
+    if (props.some(p => p.distractor)) t.push('선택적주의');
     if (props.some(p => p.interaction === 'bimanualLift')) t.push('양측협응');
     if (props.some(p => p.interaction === 'oscillate')) t.push('신체 도식');
-    t.push('주의');
+    t.push('순서기억', '주의');
     return t;
   }
   if (item.kind === 'select') return ['작업기억', '인과추론'];

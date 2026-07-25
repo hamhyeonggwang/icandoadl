@@ -337,6 +337,38 @@ const BUILDERS = {
     g.add(box(0.5, 0.12, 0.4, '#e2e8f0', -0.25, 0.16, -0.1));
     return g;
   },
+  /* 생활 장면 — 마트 심부름 */
+  milk(c) {
+    const g = new THREE.Group();
+    g.add(box(0.7, 0.85, 0.7, c));
+    g.add(box(0.7, 0.25, 0.7, '#4299e1', 0, 0.55, 0));   // 파란 라벨 띠
+    g.add(box(0.36, 0.22, 0.7, c, 0, 0.53, 0));           // 각진 지붕형 뚜껑
+    return g;
+  },
+  candy(c) {
+    const g = new THREE.Group();
+    g.add(box(0.4, 0.4, 0.4, c));
+    [-1, 1].forEach(s => {
+      const twist = box(0.16, 0.16, 0.16, '#f7fafc');
+      twist.rotation.z = 0.5 * s;
+      twist.position.x = s * 0.32;
+      g.add(twist);
+    });
+    return g;
+  },
+  shelf(c) {
+    const g = new THREE.Group();
+    g.add(box(1.6, 1.5, 0.5, c, 0, 0, -0.1));
+    [-0.5, 0, 0.5].forEach(y => g.add(box(1.5, 0.05, 0.46, '#718096', 0, y, 0.05)));
+    return g;
+  },
+  checkoutScanner(c) {
+    const g = new THREE.Group();
+    g.add(box(1.1, 0.15, 0.6, '#cbd5e0', 0, -0.35, 0));   // 컨베이어대
+    g.add(box(0.25, 0.55, 0.25, c, 0.3, 0, 0));            // 스캐너 본체
+    g.add(box(0.3, 0.05, 0.05, '#e53e3e', 0.3, 0.2, 0.13)); // 스캔 빔
+    return g;
+  },
 };
 
 /* size(정규화 반경) → 월드 스케일로 빌드. 스테이션 씬 월드는 x 0~1 좌표계.

@@ -133,6 +133,41 @@ export function makeWashstandMirrorScene(over = {}) {
   });
 }
 
+/* 마트 심부름 장면 — 2편 "심부름 다녀오기" (scene-grammar_v0.1.md §8).
+   핵심은 예산이 아니라 "목록 암기"(작업기억): 심부름 목록이 잠깐 보였다 사라지고,
+   아이는 기억에 의존해 진열대에서 물건을 고른다. 목록에 없는 사탕이 유혹(방해자극).
+   신규 recognition은 zonePass(경유 스캔) 1개 — 계산대를 지나야 장바구니 담기가 완료된다. */
+export function makeMartErrandScene(over = {}) {
+  const scan = { pos: [0.55, 0.62], radius: 0.13 };
+  const cartZone = { pos: [0.82, 0.6], radius: 0.15 };
+  return makeLivingScene({
+    place: 'mart',
+    title: '마트 심부름',
+    purpose: '엄마가 사과랑 우유를 사 오라고 하셨어요!',
+    listRevealS: 6,                    // 목록을 이만큼만 보여주고 감춘다(작업기억 유발)
+    genericPrompt: '심부름한 물건을 기억해서 장바구니에 담아요',
+    userState: { errand: 'pending' },
+    envObjects: [
+      { id: 'shelf', lib: 'shelf', pos: [0.24, 0.5], scale: 1.4 },
+      { id: 'scanner', lib: 'checkoutScanner', pos: [0.55, 0.68], scale: 1.1 },
+      { id: 'cart', lib: 'cart', pos: [0.82, 0.6], scale: 1.3 },
+    ],
+    props: [
+      { id: 'apple', lib: 'apple', pos: [0.16, 0.44], scale: 1, hand: 'any',
+        interaction: 'carryToZone', zone: cartZone, scanZone: scan,
+        occupation: '사과를 계산대에 스캔하고 장바구니에 담아요', required: true },
+      { id: 'milk', lib: 'milk', pos: [0.3, 0.5], scale: 1, hand: 'any',
+        interaction: 'carryToZone', zone: cartZone, scanZone: scan,
+        occupation: '우유를 계산대에 스캔하고 장바구니에 담아요', required: true },
+      { id: 'candy', lib: 'candy', pos: [0.22, 0.6], scale: 1, hand: 'any',
+        interaction: 'carryToZone', zone: cartZone, distractor: true,
+        occupation: '', required: false },
+    ],
+    exit: { transition: '결제 완료! 이제 집에 가요' },
+    ...over,
+  });
+}
+
 export function makeSession(over = {}) {
   return { version: 1, title: '새 세션', flow: [], ...over };
 }
@@ -221,13 +256,7 @@ export function makeDemoSession() {
       ]),
       makeSegment({ level: 1, length: 'short', theme: 'street' }),
       makeCrossing({ level: 1, redS: 7, greenS: 9 }),
-      st('마트 예산 장보기', 'mart', '5,000원으로 과일 2가지만 담아요',
-        [{ lib: 'apple', pos: [0.22, 0.6], scale: 1, hand: 'any', price: 1500 },
-         { lib: 'banana', pos: [0.38, 0.68], scale: 1, hand: 'any', price: 2000 },
-         { lib: 'soap', pos: [0.45, 0.55], scale: 1, hand: 'any', distractor: true, price: 3000 },
-         { lib: 'grape', pos: [0.55, 0.65], scale: 1, hand: 'any', price: 4000 }],
-        { lib: 'cart', pos: [0.79, 0.6], scale: 1.3, zoneRadius: 0.13 },
-        { budget: 5000, requiredCount: 2 }),
+      makeMartErrandScene(),
       st('문구점 들르기', 'stationery', '연필과 공책을 가방에 넣어요',
         [{ lib: 'pencil', pos: [0.26, 0.62], scale: 1, hand: 'any' },
          { lib: 'notebook', pos: [0.44, 0.68], scale: 1, hand: 'any' }],
