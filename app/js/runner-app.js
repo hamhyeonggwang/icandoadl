@@ -1711,6 +1711,133 @@ function entrySummary(e, i) {
     + ` · 추적소실 ${e.trackLosses} · 도움 ${e.assistLevel} · ${'⭐'.repeat(e.stars || 0)}`;
 }
 
+/* ---------- 회차 기록 (P1, difficulty-progression_v0.1.md) ----------
+   C2 준수: 파생 수치·별점만, 아동 식별정보 없음, 이 기기 localStorage에만 저장.
+   기록 대상 = 완료 화면에 도달한 회차(전체 하루 완주). 개별 연습은 별점 토스트만. */
+const HISTORY_KEY = 'adl-history-v1';
+const HISTORY_CAP = 30;
+
+function loadHistory() {
+  try { return JSON.parse(localStorage.getItem(HISTORY_KEY)) || []; }
+  catch { return []; }
+}
+function saveHistory(h) {
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(h.slice(-HISTORY_CAP)));
+}
+
+/* 영역 점수 (0~100, 데이터 없으면 null) — 공식은 투명하게 유지, 임상 판단 대체 아님 */
+function computeDomains(entries) {
+  const agg = { graspAtt: 0, graspFails: 0, releases: 0, misplaced: 0, wrongItem: 0,
+                selSteps: 0, wrongSelects: 0, redPushes: 0, assistSum: 0, assistN: 0 };
+  for (const e of entries) {
+    agg.graspAtt += e.graspAttempts || 0;
+    agg.graspFails += e.graspFails || 0;
+    agg.releases += e.releases || 0;
+    agg.misplaced += e.misplaced || 0;
+    agg.wrongItem += e.wrongItem || 0;
+    if (e.wrongSelects != null) { agg.selSteps += e.steps || 0; agg.wrongSelects += e.wrongSelects; }
+    if (e.type === 'crossing') agg.redPushes += e.redBlockedPushes || 0;
+    if (e.assistLevel != null) { agg.assistSum += e.assistLevel; agg.assistN++; }
+  }
+  const pct = v => Math.max(0, Math.min(100, Math.round(v * 100)));
+  const domains = {};
+  // 조작 정확도: 잡기 성공률과 놓기 정확률의 평균
+  const parts = [];
+  if (agg.graspAtt > 0) parts.push((agg.graspAtt - agg.graspFails) / agg.graspAtt);
+  if (agg.releases > 0) parts.push((agg.releases - agg.misplaced) / agg.releases);
+  domains.motor = parts.length ? pct(parts.reduce((s, v) => s + v, 0) / parts.length) : null;
+  // 선택·주의: 정답 선택 / (정답+오선택+방해자극 시도)
+  const selTotal = agg.selSteps + agg.wrongSelects + agg.wrongItem;
+  domains.select = selTotal > 0 ? pct(agg.selSteps / selTotal) : null;
+  // 충동 억제: 빨간불 출발 시도당 감점 (횡단보도가 없으면 null)
+  const hasCrossing = entries.some(e => e.type === 'crossing');
+  domains.inhibit = hasCrossing ? Math.max(0, 100 - 20 * agg.redPushes) : null;
+  // 자립도: 도움 없이 수행한 비율 (assist 0=만점, 2=0점)
+  domains.indep = agg.assistN > 0 ? pct(1 - agg.assistSum / (2 * agg.assistN)) : null;
+  return { domains, agg };
+}
+
+const DOMAIN_LABELS = { motor: '조작 정확도', select: '선택·주의', inhibit: '충동 억제', indep: '자립도' };
+
+/* 다음 훈련 권고 (규칙 기반 · 치료사용 참고 — 임상 판단을 대체하지 않음) */
+function buildRecommendations(agg, domains, prev) {
+  const recs = [];
+  if (agg.redPushes >= 3)
+    recs.push(`횡단보도 대기 중 출발 시도 ${agg.redPushes}회 — 충동억제 과제 수준 유지 권장`);
+  if (domains.motor != null && domains.motor < 70)
+    recs.push('잡기·놓기 실패가 잦았어요 — 잡기 반경 확대 또는 사물 크기 상향 고려');
+  if (domains.motor != null && domains.motor >= 90 && agg.assistSum === 0)
+    recs.push('조작 과제를 도움 없이 안정 수행 — 난이도 상향(존 축소·거리 확대) 제안');
+  if (agg.wrongItem >= 2)
+    recs.push(`유혹 자극 시도 ${agg.wrongItem}회 — 선택적 주의 과제 반복 권장`);
+  if (agg.assistSum >= 3)
+    recs.push('도움 발동이 잦았어요 — 현재 수준 반복 또는 하향 고려');
+  if (prev && prev.stars != null) {
+    const d = (report.entries.reduce((s, e) => s + (e.stars || 0), 0)) - prev.stars;
+    if (d > 0) recs.push(`지난 회차보다 별 +${d} — 성장하고 있어요!`);
+  }
+  if (!recs.length) recs.push('안정적으로 수행했어요 — 현재 수준 유지');
+  return recs.slice(0, 3);
+}
+
+/* 회차별 별점 스파크라인 (canvas 직접 — 외부 라이브러리 없음, 복셀풍 사각 점) */
+function drawTrend(history) {
+  const cv = document.getElementById('trendCanvas');
+  const x = cv.getContext('2d');
+  x.clearRect(0, 0, cv.width, cv.height);
+  const runs = history.slice(-15);
+  if (!runs.length) return;
+  const maxStars = Math.max(1, ...runs.map(r => r.stars || 0));
+  const padX = 16, padY = 10;
+  const W = cv.width - padX * 2, H = cv.height - padY * 2;
+  const px = i => runs.length === 1 ? padX + W / 2 : padX + (i / (runs.length - 1)) * W;
+  const py = s => padY + H - (s / maxStars) * H;
+  x.strokeStyle = '#4a4a4a'; x.lineWidth = 1;
+  x.beginPath(); x.moveTo(padX, padY + H); x.lineTo(padX + W, padY + H); x.stroke();
+  x.strokeStyle = '#6abe4b'; x.lineWidth = 2;
+  x.beginPath();
+  runs.forEach((r, i) => { const X = px(i), Y = py(r.stars || 0); i ? x.lineTo(X, Y) : x.moveTo(X, Y); });
+  x.stroke();
+  runs.forEach((r, i) => {
+    const last = i === runs.length - 1;
+    x.fillStyle = last ? '#ffd83d' : '#6abe4b';
+    const s = last ? 8 : 6;
+    x.fillRect(px(i) - s / 2, py(r.stars || 0) - s / 2, s, s);
+  });
+  x.fillStyle = '#b3b3b3';
+  x.font = '10px monospace';
+  x.fillText(`${runs.length}회차 · 최고 ⭐${maxStars}`, padX, 10);
+}
+
+function renderViz(prev, history) {
+  const { domains, agg } = computeDomains(report.entries);
+  const bars = document.getElementById('profileBars');
+  bars.innerHTML = Object.entries(DOMAIN_LABELS).map(([k, label]) => {
+    const v = domains[k];
+    if (v == null) {
+      return `<div class="profRow nodata"><span class="pl">${label}</span>
+        <div class="pbar"><div style="width:0%"></div></div>
+        <span class="pv">—</span><span class="pd flat">자료없음</span></div>`;
+    }
+    const pv = prev?.domains?.[k];
+    let delta = '<span class="pd flat">—</span>';
+    if (pv != null) {
+      const d = v - pv;
+      delta = d > 0 ? `<span class="pd up">▲+${d}</span>`
+            : d < 0 ? `<span class="pd down">▼${d}</span>`
+            : '<span class="pd flat">=</span>';
+    }
+    return `<div class="profRow"><span class="pl">${label}</span>
+      <div class="pbar"><div style="width:${v}%"></div></div>
+      <span class="pv">${v}</span>${delta}</div>`;
+  }).join('');
+  drawTrend(history);
+  document.getElementById('recList').innerHTML =
+    buildRecommendations(agg, domains, prev).map(r => `<div class="rec">${r}</div>`).join('');
+  document.getElementById('vizBox').classList.remove('hidden');
+  return domains;
+}
+
 function showCompletion() {
   const totalStars = report.entries.reduce((s, e) => s + (e.stars || 0), 0);
   const totalSec = Math.round(report.entries.reduce((s, e) => s + e.ms, 0) / 1000);
@@ -1719,6 +1846,15 @@ function showCompletion() {
   startDesc.textContent = `오늘 정말 잘했어요 — 총 ${Math.floor(totalSec / 60)}분 ${totalSec % 60}초. 한 번 더 할까요?`;
   btnStart.textContent = '다시 하기';
   btnStart.disabled = false;
+
+  // 회차 기록: 이전 회차와 비교 → 시각화 → 이번 회차 저장
+  const history = loadHistory();
+  const prev = history[history.length - 1] || null;
+  const domains = renderViz(prev, history.concat([{ stars: totalStars }])); // 추세엔 이번 회차 포함
+  report.runNo = history.length + 1;
+  history.push({ at: report.startedAt, title: report.title, stars: totalStars, domains });
+  saveHistory(history);
+
   const box = document.getElementById('reportBox');
   box.innerHTML = `<h3>치료사용 기록 <span class="c2note">(온디바이스 · 영상/개인정보 없음)</span></h3>`
     + report.entries.map((e, i) => `<div class="repRow">${entrySummary(e, i)}</div>`).join('');
@@ -1746,6 +1882,19 @@ document.getElementById('btnSaveCsv').addEventListener('click', () => {
     REPORT_COLS.map(c => c === 'idx' ? i + 1 : (e[c] ?? '')).join(','));
   downloadBlob([REPORT_COLS.join(','), ...rows].join('\n'), 'text/csv;charset=utf-8;',
     `adl-report_${report.startedAt.replace(/[:.]/g, '-')}.csv`);
+});
+document.getElementById('btnHistCsv').addEventListener('click', () => {
+  const h = loadHistory();
+  const cols = ['run', 'at', 'title', 'stars', ...Object.keys(DOMAIN_LABELS)];
+  const rows = h.map((r, i) =>
+    [i + 1, r.at, r.title, r.stars, ...Object.keys(DOMAIN_LABELS).map(k => r.domains?.[k] ?? '')].join(','));
+  downloadBlob([cols.join(','), ...rows].join('\n'), 'text/csv;charset=utf-8;',
+    `adl-history_${new Date().toISOString().slice(0, 10)}.csv`);
+});
+document.getElementById('btnHistClear').addEventListener('click', () => {
+  if (!confirm('이 컴퓨터에 저장된 회차 기록을 모두 지울까요? (필요하면 먼저 "기록 CSV"로 내보내세요)')) return;
+  localStorage.removeItem(HISTORY_KEY);
+  document.getElementById('vizBox').classList.add('hidden');
 });
 
 function scheduleFrame(fn) {
@@ -1936,6 +2085,7 @@ function showStageMenu(toast = null) {
   hideMenus();
   calibOverlay.classList.add('hidden');
   document.getElementById('reportBox').classList.add('hidden');
+  document.getElementById('vizBox').classList.add('hidden');
   document.getElementById('reportBtns').classList.add('hidden');
   buildStageGrid();
   const toastEl = document.getElementById('stageToast');
@@ -1968,6 +2118,7 @@ async function startCalibrationOnly() {
 btnStart.addEventListener('click', async () => {
   btnStart.disabled = true;
   document.getElementById('reportBox').classList.add('hidden');
+  document.getElementById('vizBox').classList.add('hidden');
   document.getElementById('reportBtns').classList.add('hidden');
   audio(); // 사용자 제스처 시점에 AudioContext 활성화
   const prevText = btnStart.textContent;

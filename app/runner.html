@@ -87,6 +87,30 @@
   .stageCard .scStars{font-size:12px; min-height:14px; color:var(--ui-highlight);}
 
   /* ---- 리포트 ---- */
+  /* ---- 훈련 프로파일 (회차 기록 시각화) ---- */
+  #vizBox{max-width:640px; width:90%; text-align:left;
+    background:var(--ui-bg); border:3px solid var(--ui-border); box-shadow:0 var(--px) 0 var(--ui-border);
+    padding:12px 16px; font-family:var(--font-body);}
+  #vizBox h3{font-size:13px; margin:0 0 10px; color:var(--text); font-family:var(--font-display);}
+  #vizBox .c2note{font-size:11px; color:var(--muted); font-weight:400; font-family:var(--font-body);}
+  .profRow{display:flex; align-items:center; gap:10px; margin-bottom:7px;}
+  .profRow .pl{width:92px; font-size:12px; color:var(--text); font-family:var(--font-display); flex-shrink:0;}
+  .profRow .pbar{flex:1; height:14px; background:rgba(0,0,0,.6); border:2px solid var(--ui-border); overflow:hidden;}
+  .profRow .pbar > div{height:100%;
+    background:repeating-linear-gradient(90deg, var(--grass) 0 10px, var(--grass-dk) 10px 13px);}
+  .profRow .pv{width:38px; text-align:right; font-size:12px; font-family:var(--font-display); color:var(--text);}
+  .profRow .pd{width:52px; font-size:11px; font-family:var(--font-display);}
+  .profRow .pd.up{color:var(--grass);}
+  .profRow .pd.down{color:var(--danger);}
+  .profRow .pd.flat{color:var(--muted);}
+  .profRow.nodata .pbar > div{background:var(--ui-face-dk); }
+  #trendWrap{margin:12px 0 4px; display:flex; flex-direction:column; gap:4px;}
+  .trendLabel{font-size:11px; color:var(--muted); font-family:var(--font-display);}
+  #trendCanvas{width:100%; height:64px; background:rgba(0,0,0,.35); border:2px solid var(--ui-border);}
+  #recList{margin-top:10px; border-top:2px solid rgba(255,255,255,.08); padding-top:8px;}
+  #recList .rec{font-size:12px; color:var(--muted); line-height:1.6; padding:2px 0;}
+  #recList .rec::before{content:'▸ '; color:var(--ui-highlight);}
+
   #reportBox{max-width:640px; width:90%; max-height:32vh; overflow-y:auto; text-align:left;
     background:var(--ui-bg); border:3px solid var(--ui-border); box-shadow:0 var(--px) 0 var(--ui-border);
     padding:12px 16px; font-family:var(--font-body);}
@@ -196,10 +220,21 @@
     </div>
     <label id="btnOpenFile" class="fileOpen">📂 세션 파일 열기<input type="file" id="fileSession" accept=".json,application/json"></label>
     <p class="privacy">🎥 이 게임은 손 움직임을 인식하기 위해 카메라를 사용해요.<br>영상은 브라우저 안에서만 처리되고, 저장·전송되지 않아요.</p>
+    <div id="vizBox" class="hidden">
+      <h3>훈련 프로파일 <span class="c2note">이 컴퓨터에만 저장 · 영상/개인정보 없음</span></h3>
+      <div id="profileBars"></div>
+      <div id="trendWrap">
+        <span class="trendLabel">회차별 별점</span>
+        <canvas id="trendCanvas" width="520" height="64"></canvas>
+      </div>
+      <div id="recList"></div>
+    </div>
     <div id="reportBox" class="hidden"></div>
     <div id="reportBtns" class="hidden">
       <button id="btnSaveJson" class="mini">📄 리포트 JSON</button>
       <button id="btnSaveCsv" class="mini">📊 리포트 CSV</button>
+      <button id="btnHistCsv" class="mini">📈 기록 CSV</button>
+      <button id="btnHistClear" class="mini">🗑 기록 지우기</button>
     </div>
   </div>
 
