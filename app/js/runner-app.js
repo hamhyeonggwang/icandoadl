@@ -173,6 +173,28 @@ const THEMES = {
   elevator: { floor: '#b6bcc7', propA: '#8b93a7', propB: '#718096', trees: false },
 };
 
+/* 커브 코스 중심선 (difficulty-progression §A L3) — z는 시작점부터의 진행 거리(양수) */
+function laneCenterX(segment, z) {
+  if (segment.courseType !== 'curve') return 0;
+  return (segment.curveAmp || 0) * Math.sin(z * (segment.curveFreq || 0.18));
+}
+
+function makeNavSign(text, color = '#2b6cb0') {
+  // 항행 코스용 표지판 스프라이트 (makeLabelSprite보다 큰 스케일 — 3D 월드 단위)
+  const cv = document.createElement('canvas');
+  cv.width = 256; cv.height = 128;
+  const x = cv.getContext('2d');
+  x.fillStyle = '#121212'; x.fillRect(0, 0, 256, 128);
+  x.fillStyle = color; x.fillRect(8, 8, 240, 112);
+  x.fillStyle = '#fff';
+  x.font = 'bold 64px "DungGeunMo", "Malgun Gothic", monospace';
+  x.textAlign = 'center'; x.textBaseline = 'middle';
+  x.fillText(text, 128, 64);
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cv), depthTest: false }));
+  sp.scale.set(1.4, 0.7, 1);
+  return sp;
+}
+
 function buildNavCourse(segment) {
   const g = new THREE.Group();
   const len = SEGMENT_LENGTHS[segment.length] || 24;
@@ -185,17 +207,18 @@ function buildNavCourse(segment) {
   floor.rotation.x = -Math.PI / 2;
   floor.position.z = -(len / 2);
   g.add(floor);
-  // 진행감을 위한 차선 마커
+  // 진행감을 위한 차선 마커 (커브 코스는 중심선을 따라 휘어짐)
   for (let z = 0; z < len; z += 3) {
     const bar = new THREE.Mesh(
       new THREE.BoxGeometry(0.25, 0.02, 1.2),
       new THREE.MeshStandardMaterial({ color: '#f7fafc' })
     );
-    bar.position.set(0, 0.011, -z - 1);
+    bar.position.set(laneCenterX(segment, z), 0.011, -z - 1);
     g.add(bar);
   }
-  // 양측 패럴랙스 프롭 (테마별: 나무/상자 또는 선반·사물함형 기둥)
+  // 양측 패럴랙스 프롭 (테마별: 나무/상자 또는 선반·사물함형 기둥) — 커브 중심선 기준 오프셋
   for (let z = 2; z < len; z += 4) {
+    const cx = laneCenterX(segment, z);
     [-1, 1].forEach(side => {
       const alt = (Math.floor(z / 4) + (side > 0 ? 1 : 0)) % 2 === 0;
       let prop;
@@ -212,23 +235,46 @@ function buildNavCourse(segment) {
           new THREE.MeshStandardMaterial({ color: theme.propB, flatShading: true }));
         leafTop.position.y = 2.7;
         prop.add(trunk, leaf, leafTop);
-        prop.position.set(side * (4.5 + (z % 3) * 0.4), 0, -z);
+        prop.position.set(cx + side * (4.5 + (z % 3) * 0.4), 0, -z);
       } else {
         const tall = !theme.trees; // 실내 테마는 키 큰 선반·사물함 느낌
         prop = new THREE.Mesh(new THREE.BoxGeometry(1.2, tall ? 2.6 : 1.6, 1.2),
           new THREE.MeshStandardMaterial({ color: alt ? theme.propB : theme.propA }));
-        prop.position.set(side * (tall ? 4.0 : 4.5 + (z % 3) * 0.4), tall ? 1.3 : 0.8, -z);
+        prop.position.set(cx + side * (tall ? 4.0 : 4.5 + (z % 3) * 0.4), tall ? 1.3 : 0.8, -z);
       }
       g.add(prop);
     });
   }
+  // 게이트 (L2 §A "직선 + 게이트 통과") — 좁은 문 기둥 한 쌍, 조향으로 통과
+  (segment.gates || []).forEach(gt => {
+    const z = gt.z * len;
+    const gm = new THREE.MeshStandardMaterial({ color: '#f6ad55', flatShading: true });
+    const half = (gt.width || 1.0);
+    const post1 = new THREE.Mesh(new THREE.BoxGeometry(0.2, 1.8, 0.2), gm);
+    const post2 = post1.clone();
+    post1.position.set(gt.xOffset - half, 0.9, -z);
+    post2.position.set(gt.xOffset + half, 0.9, -z);
+    g.add(post1, post2);
+  });
+  // 갈림길 (L4 표지판 읽기 / L5 미니맵 암기 — 실제 분기 지오메트리 없이 판정 지점 방식, §5 문서화된 단순화)
+  (segment.forks || []).forEach(fk => {
+    const z = fk.z * len;
+    const cx = laneCenterX(segment, z);
+    const sign = segment.courseType === 'forkMemory'
+      ? makeNavSign('❓', '#805ad5')                     // 기억 회상 — 정답 비공개
+      : makeNavSign(fk.correct === 'L' ? '⬅' : '➡', '#38a169'); // 즉시 판단 — 표지판 공개
+    sign.position.set(cx, 2.1, -z);
+    g.add(sign);
+  });
   // 도착 게이트
   const gate = new THREE.Group();
   const gm = new THREE.MeshStandardMaterial({ color: '#4fd1c5' });
   const p1 = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 3), gm);
-  const p2 = p1.clone(); p1.position.set(-2, 1.5, 0); p2.position.set(2, 1.5, 0);
+  const p2 = p1.clone();
+  const endCx = laneCenterX(segment, len);
+  p1.position.set(endCx - 2, 1.5, 0); p2.position.set(endCx + 2, 1.5, 0);
   const top = new THREE.Mesh(new THREE.BoxGeometry(4.3, 0.3, 0.3), gm);
-  top.position.set(0, 3, 0);
+  top.position.set(endCx, 3, 0);
   gate.add(p1, p2, top);
   gate.position.z = -len;
   g.add(gate);
@@ -329,6 +375,8 @@ function updateParticles(dt) {
 }
 
 /* ---------- 페이즈: 항행 ---------- */
+const STEER_COURSE_TYPES = ['gate', 'curve', 'fork', 'forkMemory'];
+
 class NavPhase {
   constructor(segment) {
     this.segment = segment;
@@ -340,17 +388,43 @@ class NavPhase {
     this.armPhase = 0;
     this.done = false;
     this.metrics = { strokes: 0 };
+    this.steerCourse = STEER_COURSE_TYPES.includes(segment.courseType);
+    // 게이트/갈림길은 통과 시점에 1회만 판정 — 비처벌(실패해도 진행은 계속)
+    this.gateState = (segment.gates || []).map(gt => ({ ...gt, done: false }));
+    this.forkState = (segment.forks || []).map(fk => ({ ...fk, done: false }));
     avatar.position.set(0, 0, 0);
     hudStep.textContent = '';
     setHotbar(null);
     videoWrap.classList.add('hidden'); // 렌더링만 토글 — 스트림은 유지 (브리프 A7)
-    hudInstruction.textContent =
+    this.baseInstruction =
       segment.theme === 'elevator' ? '🛗 엘리베이터를 타고 내려가요'
       : segment.level === 0 ? '앞으로 가요!'
+      : segment.courseType === 'gate' ? '양손을 저어 가며, 좁은 문 사이로 조향해서 지나가요!'
+      : segment.courseType === 'curve' ? '길이 휘어져요 — 몸을 계속 기울여 길을 따라가요!'
+      : segment.courseType === 'fork' ? '표지판을 보고 방향을 정해 조향해요!'
+      : segment.courseType === 'forkMemory' ? '외운 경로대로 방향을 정해 조향해요!'
       : segment.level === 1 ? '양손을 번갈아 저어 앞으로 가요!'
       : '양손을 번갈아 젓고, 몸을 기울여 방향을 바꿔요!';
+    // 미니맵 암기 (L5 §A) — 출발 전 정답 경로를 잠깐 보여주고 감춤 (mart listRevealS와 동일 패턴)
+    this.mapRevealS = segment.mapRevealS || 0;
+    this.mapRevealElapsed = 0;
+    this.mapRevealed = this.mapRevealS <= 0;
+    if (!this.mapRevealed) {
+      const route = this.forkState.map(f => f.correct === 'L' ? '⬅️' : '➡️').join(' → ');
+      hudInstruction.textContent = `🗺️ 경로를 기억하세요: ${route}`;
+    } else {
+      hudInstruction.textContent = this.baseInstruction;
+    }
   }
   update(input, dt) {
+    if (!this.mapRevealed) {
+      this.mapRevealElapsed += dt;
+      if (this.mapRevealElapsed >= this.mapRevealS) {
+        this.mapRevealed = true;
+        hudInstruction.textContent = this.baseInstruction;
+      }
+      return; // 출발 전 암기 구간 — 아직 이동하지 않음
+    }
     const lv = this.segment.level;
     if (lv === 0) {
       this.speed = 5;
@@ -363,13 +437,48 @@ class NavPhase {
       }
       this.speed *= Math.pow(0.5, dt / 1.1); // 임펄스 감쇠 (퐁퐁 물리 차용)
     }
-    if (lv === 2) {
+    if (lv === 2 || this.steerCourse) {
       const lean = Math.abs(input.lean) < PARAMS.LEAN_DEADZONE ? 0 : input.lean;
       this.x = Math.min(3, Math.max(-3, this.x + lean * 5 * dt));
     } else {
       this.x *= Math.pow(0.5, dt / 0.8); // 자동 복귀
     }
     this.travelled += this.speed * dt;
+
+    // 커브 코스 중심선 이탈량 (관찰 지표 — 감점 아님)
+    if (this.segment.courseType === 'curve') {
+      const target = laneCenterX(this.segment, this.travelled);
+      this._devSum = (this._devSum || 0) + Math.abs(this.x - target) * dt;
+      this._devTime = (this._devTime || 0) + dt;
+      this.metrics.laneDeviationAvg = +(this._devSum / Math.max(0.001, this._devTime)).toFixed(2);
+    }
+    // 게이트 통과 판정 (비처벌 — 못 지나가도 진행은 계속됨)
+    for (const gt of this.gateState) {
+      if (!gt.done && this.travelled >= gt.z * this.length) {
+        gt.done = true;
+        this.metrics.gatesTotal = (this.metrics.gatesTotal || 0) + 1;
+        if (Math.abs(this.x - gt.xOffset) <= (gt.width || 1.0)) {
+          this.metrics.gatesPassed = (this.metrics.gatesPassed || 0) + 1;
+          sfx.blinkTick();
+        } else {
+          sfx.assist();
+        }
+      }
+    }
+    // 갈림길 방향 판정 (비처벌 — 오답이어도 진행은 계속됨)
+    for (const fk of this.forkState) {
+      if (!fk.done && this.travelled >= fk.z * this.length) {
+        fk.done = true;
+        this.metrics.forksTotal = (this.metrics.forksTotal || 0) + 1;
+        const side = this.x >= 0 ? 'R' : 'L';
+        if (side === fk.correct) {
+          this.metrics.forksCorrect = (this.metrics.forksCorrect || 0) + 1;
+          sfx.blinkTick();
+        } else {
+          sfx.assist();
+        }
+      }
+    }
 
     avatar.position.set(this.x, 0, -this.travelled);
     const swing = Math.sin(performance.now() / 1000 * 6) * Math.min(1, this.speed / 4) * 0.6;
@@ -379,7 +488,15 @@ class NavPhase {
     navCam.lookAt(this.x, 1, -this.travelled - 4);
 
     hudProgressFill.style.width = `${Math.min(100, this.travelled / this.length * 100)}%`;
-    if (this.travelled >= this.length) this.done = true;
+    if (this.travelled >= this.length) {
+      const gT = this.metrics.gatesTotal || 0, fT = this.metrics.forksTotal || 0;
+      if (gT + fT > 0) {
+        const hit = (this.metrics.gatesPassed || 0) + (this.metrics.forksCorrect || 0);
+        const total = gT + fT;
+        this.metrics.stars = hit === total ? 3 : hit > 0 ? 2 : 1;
+      }
+      this.done = true;
+    }
   }
   render() { renderer.render(navScene, navCam); }
   dispose() { navScene.remove(this.course); }
@@ -1725,7 +1842,13 @@ async function runFlow(indices = null, { returnToMenu = false } = {}) {
 function entrySummary(e, i) {
   const head = `${i + 1}. ${e.type === 'segment' ? '🏃 이동' : e.type === 'crossing' ? '🚦 횡단보도' : `${(PLACES[e.place]?.emoji || '📦')} ${e.title}`}`;
   const sec = (e.ms / 1000).toFixed(0);
-  if (e.type === 'segment') return `${head} — ${sec}초 · 스트로크 ${e.strokes}`;
+  if (e.type === 'segment') {
+    const gT = e.gatesTotal, fT = e.forksTotal;
+    const extra = gT ? ` · 게이트 ${e.gatesPassed || 0}/${gT}`
+      : fT ? ` · 갈림길 ${e.forksCorrect || 0}/${fT}`
+      : '';
+    return `${head} — ${sec}초 · 스트로크 ${e.strokes}${extra}${e.stars ? ` · ${'⭐'.repeat(e.stars)}` : ''}`;
+  }
   if (e.type === 'crossing') {
     return `${head} — ${sec}초 · 신호대기 ${(e.waitMs / 1000).toFixed(1)}초 · 건너기 ${(e.crossMs / 1000).toFixed(1)}초`
       + ` · 대기 중 출발시도 ${e.redBlockedPushes} · 스트로크 ${e.strokes}`;
@@ -1967,7 +2090,8 @@ function downloadBlob(content, type, filename) {
 }
 const REPORT_COLS = ['idx', 'type', 'title', 'place', 'lv', 'ms', 'strokes', 'graspAttempts', 'graspFails',
   'releases', 'misplaced', 'wrongItem', 'budgetOvers', 'wrongSelects', 'steps', 'trackLosses',
-  'assistLevel', 'stars', 'redBlockedPushes', 'waitMs', 'crossMs'];
+  'assistLevel', 'stars', 'redBlockedPushes', 'waitMs', 'crossMs',
+  'gatesPassed', 'gatesTotal', 'forksCorrect', 'forksTotal', 'laneDeviationAvg'];
 document.getElementById('btnSaveJson').addEventListener('click', () => {
   downloadBlob(JSON.stringify(report, null, 2), 'application/json',
     `adl-report_${report.startedAt.replace(/[:.]/g, '-')}.json`);
@@ -2113,7 +2237,14 @@ function showStartError(err) {
 
 /* ---------- 과제 선택 메뉴 (인지기능 배지 포함) ---------- */
 function cognitiveTags(item) {
-  if (item.type === 'segment') return ['주의', '양측협응'];
+  if (item.type === 'segment') {
+    const t = ['주의', '양측협응'];
+    if (item.courseType === 'gate') t.unshift('조향정확도');
+    else if (item.courseType === 'curve') t.unshift('지속적조향');
+    else if (item.courseType === 'fork') t.unshift('방향판단');
+    else if (item.courseType === 'forkMemory') t.unshift('공간기억');
+    return t;
+  }
   if (item.type === 'crossing') return ['충동억제', '인과추론'];
   if (item.type === 'livingScene') {
     const props = item.props || [];
@@ -2140,7 +2271,8 @@ const THEME_NAMES = { hall: '집 복도', elevator: '엘리베이터', street: '
 
 function stageLabel(item) {
   if (item.type === 'segment')
-    return { emoji: '🏃', title: `걷기 · ${THEME_NAMES[item.theme] || ''}`, type: `이동 · Level ${item.level}` };
+    return { emoji: '🏃', title: `걷기 · ${THEME_NAMES[item.theme] || ''}`,
+      type: `이동 · Lv.${item.difficulty || item.level}` };
   if (item.type === 'crossing')
     return { emoji: '🚦', title: '횡단보도 건너기', type: `신호 지키기 · Level ${item.level}` };
   if (item.type === 'livingScene')

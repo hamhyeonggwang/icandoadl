@@ -45,7 +45,34 @@ export function applyDifficultyPreset(item) {
 }
 
 export function makeSegment(over = {}) {
-  return { type: 'segment', level: 1, length: 'short', theme: 'hall', ...over };
+  return {
+    type: 'segment', level: 1, length: 'short', theme: 'hall',
+    courseType: 'straight', // 'straight'|'gate'|'curve'|'fork'|'forkMemory' (difficulty-progression §A)
+    gates: [],       // 'gate': [{z:0~1(구간 비율), xOffset, width}] — 좁은 문을 조향으로 통과
+    curveAmp: 1.6, curveFreq: 0.18, // 'curve': 사인파 중심선 진폭·빈도 (초기 추정)
+    forks: [],       // 'fork'|'forkMemory': [{z:0~1, correct:'L'|'R'}] — 표지판 보고 방향 선택
+    mapRevealS: 0,   // 'forkMemory': 출발 전 경로를 이만큼(초)만 보여주고 감춤 — 공간기억 유발
+    ...over,
+  };
+}
+
+/* 걷기 난이도 사다리 L1~L5 (difficulty-progression_v0.1.md §A "걷기") — courseType 프리셋.
+   L4·L5의 갈림길은 실제 분기 지오메트리가 아니라 판정 지점(sign+영역 통과 시 방향 기록) 방식 —
+   충돌·경로 재수렴 로직 없이 안전하게 구현하기 위한 의도된 단순화. */
+export const COURSE_LEVELS = {
+  1: { courseType: 'straight', gates: [], forks: [], mapRevealS: 0 },
+  2: { courseType: 'gate', gates: [{ z: 0.35, xOffset: 0, width: 1.0 }, { z: 0.65, xOffset: 0.8, width: 1.0 }] },
+  3: { courseType: 'curve', curveAmp: 1.6, curveFreq: 0.18 },
+  4: { courseType: 'fork', forks: [{ z: 0.55, correct: 'L' }] },
+  5: { courseType: 'forkMemory', forks: [{ z: 0.4, correct: 'R' }, { z: 0.75, correct: 'L' }], mapRevealS: 4 },
+};
+
+export function applyCourseLevel(segment, lv) {
+  const preset = COURSE_LEVELS[lv];
+  if (!preset) return segment;
+  Object.assign(segment, { gates: [], forks: [], mapRevealS: 0 }, preset);
+  segment.difficulty = lv;
+  return segment;
 }
 
 /* 횡단보도: 2차선 도로 + 보행 신호등. Level 0 초록불 자동 / 1 교대 스트로크로 건넘
@@ -262,6 +289,7 @@ export function makeDemoSession() {
     makeStation({ title, place, instruction, items, target, grading: { ...GRADING_DEFAULTS }, ...extra });
   const sel = (title, place, steps, difficulty) =>
     makeSelectStation({ title, place, steps, ...(difficulty ? { difficulty } : {}) });
+  const walk = (theme, length, lv) => applyCourseLevel(makeSegment({ length, theme }), lv);
   return makeSession({
     title: '우리 마을 하루 (데모)',
     flow: [
@@ -285,7 +313,7 @@ export function makeDemoSession() {
                     { label: '1층', emoji: '1️⃣', correct: true },
                     { label: '지하', emoji: '🅱️', correct: false }] },
       ], 1),
-      makeSegment({ level: 1, length: 'short', theme: 'street' }),
+      walk('street', 'short', 2), // 게이트: 정렬 조향
       sel('버스 타기', 'busstop', [
         { prompt: '학교 가는 3번 버스를 골라요',
           options: [{ label: '3번', emoji: '🚌', correct: true },
@@ -295,7 +323,7 @@ export function makeDemoSession() {
           options: [{ label: '앞문', emoji: '🚪', correct: true },
                     { label: '뒷문', emoji: '🚫', correct: false }] },
       ], 2),
-      makeSegment({ level: 1, length: 'short', theme: 'street' }),
+      walk('street', 'short', 3), // 커브: 지속 조향
       makeCrossing({ level: 1, redS: 7, greenS: 9 }),
       makeMartErrandScene(),
       st('문구점 들르기', 'stationery', '연필과 공책을 가방에 넣어요',
@@ -318,7 +346,7 @@ export function makeDemoSession() {
                     { label: '왼쪽', emoji: '⬅️', correct: false },
                     { label: '오른쪽', emoji: '➡️', correct: false }] },
       ]),
-      makeSegment({ level: 2, length: 'medium', theme: 'school' }),
+      walk('school', 'medium', 5), // 갈림길 2회 + 미니맵 암기 (길찾기 앱 직후 — 서사적으로 정합)
       st('교실 도착', 'school', '큰 책은 양손으로! 책상에 꺼내요',
         [{ lib: 'pencilcase', pos: [0.25, 0.6], scale: 1, hand: 'any' },
          { lib: 'book', pos: [0.42, 0.68], scale: 1.7, hand: 'both' }],
