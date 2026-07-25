@@ -62,6 +62,7 @@ v1 단순화: 스테이션당 타깃 1개, 모든 아이템 → 동일 타깃 ("
 | M6.1 | Voxel Sandbox 리디자인 | Presentation Layer 전환 (게임 로직·MediaPipe 보존) | ✅ 2026-07-24 |
 | M6.2 | 사물 34종 복셀화 | library-mesh.js 전체 BoxGeometry 재구성 | ✅ 2026-07-24 |
 | M6.3 | Scene 문법 MVP-A: 침실 | LivingScenePhase — 상태·파생 오브젝트·부분순서 실장 | ✅ 2026-07-24 |
+| M6.4 | Scene 문법 MVP-B: 세면실 Diegetic Mirror | 거울=3D 월드 오브젝트, oscillate 신규 | ✅ 2026-07-25 (웹캠 성능 실측만 미확인) |
 | M6 | Gate 2 (저작성 검증) | 미참여 치료사 1명, 무도움 30분 내 스테이션 2개 세션 저작→링크 실행 | 현장 |
 | M7 | 러너 검증 | 아동 1명 치료사 동석 세션 완주, 실패 종결 0회 | 현장 |
 
@@ -211,4 +212,36 @@ GRASP/CARRY/RELEASE FSM·양손 잡기를 그대로 재사용(신규 없음), in
   포맷 그대로 표시(특수 분기 불요) — 콘솔 에러 0
 - 에디터: 새 세션 로드 시 크래시 없음, 플레이스홀더 정상 표시, 팔레트 비활성화 정상
 
-**다음(MVP-B, 미착수)**: dual-perspective-system_v0.1.md §5의 세면실 Diegetic Mirror.
+## M6.4 — Scene 문법 MVP-B: 세면실 Diegetic Mirror (2026-07-25 구현·검증)
+dual-perspective-system_v0.1.md §5·§6을 실제 구현. §6 리스크 5개를 착수 전 확정:
+1. **종횡비**: object-fit:cover 방식 UV crop(`vt.repeat`/`vt.offset`)으로 카메라(16:9)와 거울
+   화면비 불일치 해결 — `videoAspect` vs `mirrorScreenAspect`(월드 크기를 stageAspect()로
+   화면비 환산) 비교 후 넘치는 축만 크롭.
+2. **손 좌표 재투영**: §3 스코프 결정대로 별도 좌표계 도입 없이 기존 전체 화면 `toWorld()`
+   매핑을 그대로 사용 — 거울은 화면의 큰 부분을 차지하는 시각 오브젝트일 뿐, 판정은 무관.
+   손이 거울 밖으로 나가면 커서가 벽(voxel 배경) 위에 보이는 것을 의도된 단순화로 수용.
+3. **전환 연출**: 문서 권고대로 기존 페이드 컷 유지, 카메라 다가가기는 보류.
+4. **성능**: 이 샌드박스는 웹캠이 차단돼 있어 실측 불가 — 사용자 웹캠 테스트 시 FPS 배지로
+   직접 확인 필요(정직하게 미검증 상태로 남김).
+5. **재사용성**: `scene.mirror`(위치/크기)·`scene.roomBackdrop`(배경색)을 `LivingScenePhase`의
+   범용 필드로 구현 — 향후 다른 거울 있는 장소(현관 전신거울 등)도 필드만 채우면 재사용.
+
+**신규 recognition은 oscillate(왕복) 1개뿐** — 나머지는 기존 GRASP/CARRY/RELEASE 재사용(C절
+약속 그대로). 손에 쥔 사물의 프레임 간 x변위로 방향 반전을 세는 방식으로, 걷기의 교대 스트로크
+피크 검출과 동일 원리를 재사용해 구현(신규 드라이버·MediaPipe 변경 없음).
+
+**세면실 장면**: `makeWashstandMirrorScene()` — 칫솔 왕복(oscillate, 필수) 1개 행동.
+`videoWrap`(풀스크린 DOM 웹캠)을 숨기고, 대신 `stScene` 안 거울 평면(`THREE.VideoTexture` →
+`driver.videoEl`)에 실시간 영상을 매핑. 마우스 모드(videoEl 없음)는 자리표시 색면으로 안전
+대체. 거울 반전은 CSS가 아니라 `mesh.scale.x=-1`(지오메트리 반전)로 처리 — VideoTexture는
+DOM CSS transform을 무시하고 원본 프레임을 읽으므로 별도 반전이 필요.
+
+데모 세션 flow[1]을 기존 "세수와 양치"(station, 칫솔·비누를 세면대로 나르는 발명된 행동)에서
+이 Scene으로 교체(생태학적 타당성 분석의 "무의미한 운반" 지적을 해소).
+
+**검증(마우스 모드)**: 거울 진입 시 `videoWrap` 자동 숨김·거울 메시 생성 확인, 칫솔 잡기→좌우
+왕복 8회(진폭 0.08)→`done`+`hygiene=teethBrushed`+완료 배너 확인, "전체 하루" 15항목 재완주
+(⭐×33) 회귀 없음, 에디터 플레이스홀더 정상. 콘솔 에러 0.
+
+**다음(미착수)**: 웹캠 실기로 거울 텍스처·왕복 판정감 확인(리스크 4 성능 실측 포함),
+OSC_MIN_VX(0.4)·oscTarget(8) 현장 튜닝. 그 다음은 심부름 편(2편) 또는 추가 Scene.

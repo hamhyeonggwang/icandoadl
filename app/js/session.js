@@ -108,6 +108,31 @@ export function makeBedroomMorningScene(over = {}) {
   });
 }
 
+/* 세면실 아침 장면 — MVP-B: Diegetic Mirror (dual-perspective-system_v0.1.md §5).
+   웹캠 영상이 화면 전체 오버레이가 아니라 room 안의 '거울' 오브젝트 표면(텍스처)으로 존재한다.
+   신규 recognition은 oscillate(왕복) 1개뿐 — 나머지는 기존 GRASP/CARRY/RELEASE 재사용. */
+export function makeWashstandMirrorScene(over = {}) {
+  return makeLivingScene({
+    place: 'washstand',
+    title: '거울 앞에서 이 닦기',
+    purpose: '거울을 보면서 칫솔로 이를 닦아요',
+    userState: { hygiene: 'none' },
+    roomBackdrop: '#8fb3c7',           // 세면실 벽(배경) — 웹캠은 거울에만 나타남
+    mirror: { pos: [0.5, 0.4], w: 0.5, h: 0.5 },
+    envObjects: [
+      { id: 'sink', lib: 'sink', pos: [0.5, 0.86], scale: 1.7 },
+    ],
+    props: [
+      { id: 'toothbrush', lib: 'toothbrush', pos: [0.2, 0.72], scale: 1.1, hand: 'any',
+        interaction: 'oscillate', oscTarget: 8, // 기본값 — params.js OSC_TARGET_DEFAULT와 동일(초기 추정)
+        occupation: '칫솔을 잡고 이를 닦아요', required: true,
+        onComplete: { setUserState: { hygiene: 'teethBrushed' } } },
+    ],
+    exit: { transition: '상쾌해요! 이제 아침을 먹어요' },
+    ...over,
+  });
+}
+
 export function makeSession(over = {}) {
   return { version: 1, title: '새 세션', flow: [], ...over };
 }
@@ -167,10 +192,7 @@ export function makeDemoSession() {
     title: '우리 마을 하루 (데모)',
     flow: [
       makeBedroomMorningScene(),
-      st('세수와 양치', 'washstand', '칫솔과 비누를 세면대에 놓아요',
-        [{ lib: 'toothbrush', pos: [0.25, 0.6], scale: 1, hand: 'any' },
-         { lib: 'soap', pos: [0.42, 0.7], scale: 1, hand: 'any' }],
-        { lib: 'sink', pos: [0.75, 0.6], scale: 1.4, zoneRadius: 0.13 }),
+      makeWashstandMirrorScene(),
       st('아침 식사', 'kitchen', '빵과 주스를 쟁반에 올려요',
         [{ lib: 'bread', pos: [0.25, 0.62], scale: 1, hand: 'any' },
          { lib: 'juice', pos: [0.42, 0.68], scale: 1, hand: 'any' }],

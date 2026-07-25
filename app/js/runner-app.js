@@ -1206,6 +1206,9 @@ class LivingScenePhase {
     this.metrics = { graspAttempts: 0, graspFails: 0, releases: 0, misplaced: 0,
                      trackLosses: 0, assistLevel: 0, stars: 0 };
 
+    // 배경(diegetic mirror 장면 전용 — 웹캠이 화면 전체가 아니라 거울에만 나타날 때 필요)
+    if (scene.roomBackdrop) this._setupBackdrop(scene.roomBackdrop);
+
     // 배경 환경(비상호작용)
     this.envMeshes = (scene.envObjects || []).map(def => {
       const mesh = buildMesh(def.lib, def.scale || 1, session.assets);
@@ -1214,6 +1217,11 @@ class LivingScenePhase {
       this.root.add(mesh);
       return mesh;
     });
+
+    // Diegetic Mirror (MVP-B, dual-perspective-system_v0.1.md §5) — 있으면 웹캠은
+    // 화면 전체가 아니라 이 거울 표면에만 나타남. 없으면 기존 풀스크린 거울 모드 유지(§3 스코프).
+    if (scene.mirror) this._setupMirror(scene.mirror);
+    videoWrap.classList.toggle('hidden', !!scene.mirror);
 
     // 조작 사물 (파생 오브젝트는 mesh 생성을 보류 — P8)
     this.props = (scene.props || []).map(def => {
@@ -1225,10 +1233,57 @@ class LivingScenePhase {
 
     this.handFSM = { L: makeLSHandFSM(), R: makeLSHandFSM() };
     applyPlaceDecor(this.root, scene);
-    videoWrap.classList.remove('hidden');
     hudInstruction.textContent = scene.purpose || scene.title;
     this._assistPropId = null;
     this.updateHudStep();
+  }
+
+  _setupBackdrop(color) {
+    const h = 1 / stageAspect();
+    const wall = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.6, h * 1.6),
+      new THREE.MeshStandardMaterial({ color, flatShading: true })
+    );
+    wall.position.set(0.5, -h / 2, -0.3);
+    this.root.add(wall);
+  }
+
+  /* 웹캠 영상을 3D 월드 안 거울 표면(VideoTexture)으로 편입.
+     화면 전체가 카메라로 바뀌는 대신, 거울 경계 안에서만 자기 모습을 본다.
+     마우스 모드(videoEl 없음)는 자리표시 색면으로 대체 — 인터랙션 판정에는 영향 없음. */
+  _setupMirror(def) {
+    const videoEl = driver?.videoEl || null;
+    const w = def.w, hgt = def.h;
+    let material;
+    if (videoEl) {
+      const vt = new THREE.VideoTexture(videoEl);
+      vt.minFilter = THREE.LinearFilter; vt.magFilter = THREE.LinearFilter;
+      // object-fit:cover 크롭 — 거울의 화면상 종횡비 vs 카메라 종횡비 불일치 대응(§6 리스크 1)
+      const videoAspect = (videoEl.videoWidth || 16) / (videoEl.videoHeight || 9);
+      const mirrorScreenAspect = w / (hgt * stageAspect());
+      if (videoAspect > mirrorScreenAspect) {
+        vt.repeat.set(mirrorScreenAspect / videoAspect, 1);
+        vt.offset.set((1 - vt.repeat.x) / 2, 0);
+      } else {
+        vt.repeat.set(1, videoAspect / mirrorScreenAspect);
+        vt.offset.set(0, (1 - vt.repeat.y) / 2);
+      }
+      material = new THREE.MeshBasicMaterial({ map: vt });
+      this._mirrorTexture = vt;
+    } else {
+      material = new THREE.MeshStandardMaterial({ color: '#3a4a5a', flatShading: true });
+    }
+    const wpos = toWorld(def.pos[0], def.pos[1]);
+    const frame = new THREE.Mesh(
+      new THREE.PlaneGeometry(w + 0.035, hgt + 0.035),
+      new THREE.MeshStandardMaterial({ color: '#e2e8f0', flatShading: true })
+    );
+    frame.position.set(wpos.x, wpos.y, -0.02);
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, hgt), material);
+    mesh.position.set(wpos.x, wpos.y, -0.015);
+    mesh.scale.x = -1; // 거울 반전(카메라 CSS 반전은 VideoTexture 픽셀 자체엔 미적용 — 지오메트리로 뒤집음
+    this.root.add(frame, mesh);
+    this._mirrorMesh = mesh;
   }
 
   _buildPropMesh(p) {
@@ -1411,6 +1466,32 @@ class LivingScenePhase {
               if (!f.openHoldStart) f.openHoldStart = now;
               if (now - f.openHoldStart >= this.grading.tReleaseMs) this.completeCarryToZone(k, f, p, now);
             } else f.openHoldStart = null;
+          } else if (p.def.interaction === 'oscillate') {
+            // 왕복(양치): 쥔 사물이 손을 따라가며, 좌우 방향 반전 횟수를 센다(걷기 스트로크와 동일 원리).
+            const prevX = p.nx;
+            p.nx = hand.pos.x; p.ny = hand.pos.y;
+            const dt = Math.max(1e-3, (now - (p._oscLastT || now)) / 1000);
+            p._oscLastT = now;
+            const vx = (p.nx - prevX) / dt;
+            const sign = Math.abs(vx) > PARAMS.OSC_MIN_VX ? Math.sign(vx) : 0;
+            if (sign !== 0 && sign !== (p._oscLastSign || 0)) {
+              p._oscCount = (p._oscCount || 0) + 1;
+              p._oscLastSign = sign;
+              sfx.stroke();
+            }
+            if ((p._oscCount || 0) >= (p.def.oscTarget || PARAMS.OSC_TARGET_DEFAULT)) {
+              p.state = 'done'; f.fsm = 'ARMED'; f.carryId = null;
+              this.applyOnComplete(p);
+              sfx.drop(); burst(p.nx, p.ny);
+              this.updateHudStep(); this.checkExit();
+            } else if (hand.cls === 'OPEN' && Math.abs(hand.vy) <= PARAMS.RELEASE_MAX_SPEED) {
+              // 도중에 내려놓으면 실패 없이 그 자리에 남음 — 진행한 왕복 횟수는 보존(재시도 가능)
+              if (!f.openHoldStart) f.openHoldStart = now;
+              if (now - f.openHoldStart >= this.grading.tReleaseMs) {
+                p.state = 'free'; f.fsm = 'RELEASE'; f.carryId = null; f.openHoldStart = null;
+                this.metrics.releases++;
+              }
+            } else f.openHoldStart = null;
           } else if (p.def.interaction === 'slide') {
             if (hand.cls !== 'FIST') { f.fsm = 'ARMED'; f.carryId = null; break; }
             const axisKey = p.def.axis === 'y' ? 'y' : 'x';
@@ -1495,11 +1576,13 @@ class LivingScenePhase {
   render() { renderer.render(stScene, stCam); }
   dispose() {
     stScene.remove(this.root);
+    this._mirrorTexture?.dispose();
     cursors.L.visible = false; cursors.R.visible = false;
     banner.classList.add('hidden');
     assistBadge.classList.add('hidden');
     placeChip.classList.add('hidden');
     videoWrap.style.background = '';
+    videoWrap.classList.remove('hidden'); // diegetic 거울로 숨겼던 경우 다음 페이즈를 위해 복원
     setHotbar(null);
   }
 }
@@ -1745,7 +1828,14 @@ function showStartError(err) {
 function cognitiveTags(item) {
   if (item.type === 'segment') return ['주의', '양측협응'];
   if (item.type === 'crossing') return ['충동억제', '인과추론'];
-  if (item.type === 'livingScene') return ['순서기억', '양측협응', '주의'];
+  if (item.type === 'livingScene') {
+    const props = item.props || [];
+    const t = ['순서기억'];
+    if (props.some(p => p.interaction === 'bimanualLift')) t.push('양측협응');
+    if (props.some(p => p.interaction === 'oscillate')) t.push('신체 도식');
+    t.push('주의');
+    return t;
+  }
   if (item.kind === 'select') return ['작업기억', '인과추론'];
   const items = item.items || [];
   const t = []; // 실행기능 태그를 앞으로 (slice(0,3)에서 살아남도록)

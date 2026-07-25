@@ -13,4 +13,6 @@ export const PARAMS = {
   TRACK_LOSS_MS: 500,        // CARRY 중 손 미검출 → 부유 대기 전환
   ASSIST_SCALE: 1.6,         // assist 1단계 반경 배율
   ASSIST_DRIFT_SPEED: 0.03,  // assist 2단계 부유 이동 속도(정규화/초)
+  OSC_MIN_VX: 0.4,           // 왕복(oscillate) 판정 — 최소 좌우 속도(정규화/초), 걷기 스트로크보다 작은 동작
+  OSC_TARGET_DEFAULT: 8,     // 기본 왕복 횟수(반전 카운트) — 완료로 인정
 };
