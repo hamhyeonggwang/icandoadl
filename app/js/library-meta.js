@@ -30,6 +30,7 @@ export const LIBRARY = {
   shirt:      { name: '옷',       emoji: '👕', color: '#48bb78', size: 0.055 },
   pencil:     { name: '연필',     emoji: '✏️', color: '#ecc94b', size: 0.035 },
   notebook:   { name: '공책',     emoji: '📓', color: '#38b2ac', size: 0.05 },
+  eraser:     { name: '지우개',   emoji: '🧊', color: '#f687b3', size: 0.03 },
   cart:       { name: '장바구니', emoji: '🛒', color: '#e53e3e', size: 0.085, targetOk: true },
   shoerack:   { name: '신발장',   emoji: '🗄️', color: '#975a16', size: 0.085, targetOk: true },
   closet:     { name: '옷장',     emoji: '🚪', color: '#9c6f44', size: 0.09,  targetOk: true },

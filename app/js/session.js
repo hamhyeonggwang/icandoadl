@@ -52,6 +52,8 @@ export function makeSegment(over = {}) {
     curveAmp: 1.6, curveFreq: 0.18, // 'curve': 사인파 중심선 진폭·빈도 (초기 추정)
     forks: [],       // 'fork'|'forkMemory': [{z:0~1, correct:'L'|'R'}] — 표지판 보고 방향 선택
     mapRevealS: 0,   // 'forkMemory': 출발 전 경로를 이만큼(초)만 보여주고 감춤 — 공간기억 유발
+    flags: [],       // 이중과제(P5 §D): [{z:0~1, xOffset, color:'orange'|'green'}] — 조향하며 색 세기
+                      // (green은 방해자극·비계수). 정답은 뒤따르는 회상 스텝에 정적으로 저작됨.
     ...over,
   };
 }
@@ -289,7 +291,7 @@ export function makeDemoSession() {
     makeStation({ title, place, instruction, items, target, grading: { ...GRADING_DEFAULTS }, ...extra });
   const sel = (title, place, steps, difficulty) =>
     makeSelectStation({ title, place, steps, ...(difficulty ? { difficulty } : {}) });
-  const walk = (theme, length, lv) => applyCourseLevel(makeSegment({ length, theme }), lv);
+  const walk = (theme, length, lv, over = {}) => applyCourseLevel(makeSegment({ length, theme, ...over }), lv);
   return makeSession({
     title: '우리 마을 하루 (데모)',
     flow: [
@@ -326,11 +328,14 @@ export function makeDemoSession() {
       walk('street', 'short', 3), // 커브: 지속 조향
       makeCrossing({ level: 1, redS: 7, greenS: 9 }),
       makeMartErrandScene(),
-      st('문구점 들르기', 'stationery', '연필과 공책을 가방에 넣어요',
-        [{ lib: 'pencil', pos: [0.26, 0.62], scale: 1, hand: 'any' },
-         { lib: 'notebook', pos: [0.44, 0.68], scale: 1, hand: 'any' }],
+      // 단순 계산(P5 §A-인지 L4): 용돈 1000원으로 3개 중 2개만 담을 수 있다 — 어떤 2개를
+      // 고르느냐가 예산 안에 들어오는지 스스로 가늠해야 함(전부 담으면 1600원, 예산 초과).
+      st('문구점 들르기', 'stationery', '용돈 1000원 — 담을 수 있는 것 2가지를 가방에 넣어요',
+        [{ lib: 'pencil', pos: [0.26, 0.62], scale: 1, hand: 'any', price: 300 },
+         { lib: 'notebook', pos: [0.44, 0.68], scale: 1, hand: 'any', price: 700 },
+         { lib: 'eraser', pos: [0.36, 0.5], scale: 0.9, hand: 'any', price: 600 }],
         { lib: 'backpack', pos: [0.77, 0.58], scale: 1.3, zoneRadius: 0.12 },
-        { difficulty: 2 }),
+        { difficulty: 3, budget: 1000, requiredCount: 2 }),
       sel('카페 키오스크', 'cafe', [
         { prompt: '딸기주스를 주문해요 — 메뉴에서 골라요',
           options: [{ label: '딸기주스', emoji: '🍓', correct: true },
@@ -346,12 +351,28 @@ export function makeDemoSession() {
                     { label: '왼쪽', emoji: '⬅️', correct: false },
                     { label: '오른쪽', emoji: '➡️', correct: false }] },
       ]),
-      walk('school', 'medium', 5), // 갈림길 2회 + 미니맵 암기 (길찾기 앱 직후 — 서사적으로 정합)
+      // 갈림길 2회 + 미니맵 암기 (길찾기 앱 직후 — 서사적으로 정합) + 이중과제(P5 §A-인지 L5):
+      // 조향하는 동안 주황 깃발만 세고 초록 깃발(방해자극)은 무시 — 정답은 뒤 회상 스텝에서 확인
+      walk('school', 'medium', 5, {
+        flags: [
+          { z: 0.2, xOffset: -1.4, color: 'orange' },
+          { z: 0.45, xOffset: 1.2, color: 'green' },
+          { z: 0.85, xOffset: -1.1, color: 'orange' },
+        ],
+      }),
       st('교실 도착', 'school', '큰 책은 양손으로! 책상에 꺼내요',
         [{ lib: 'pencilcase', pos: [0.25, 0.6], scale: 1, hand: 'any' },
          { lib: 'book', pos: [0.42, 0.68], scale: 1.7, hand: 'both' }],
         { lib: 'desk', pos: [0.76, 0.62], scale: 1.4, zoneRadius: 0.14 },
         { difficulty: 3 }),
+      // 지연 회상(P5 §A-인지 L5): 걷는 동안 본 것을 다른 과제(교실 도착) 뒤에 떠올리기
+      sel('아침 조회 — 오는 길 기억하기', 'school', [
+        { prompt: '🚩 학교 오는 길에 주황 깃발을 몇 개 봤어요?',
+          options: [{ label: '1개', emoji: '1️⃣', correct: false },
+                    { label: '2개', emoji: '2️⃣', correct: true },
+                    { label: '3개', emoji: '3️⃣', correct: false }],
+          recall: true },
+      ], 5),
     ],
   });
 }

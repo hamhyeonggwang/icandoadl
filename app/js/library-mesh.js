@@ -244,6 +244,12 @@ const BUILDERS = {
     g.add(box(0.5, 0.3, 0.13, '#f7fafc', 0, 0.2, 0));
     return g;
   },
+  eraser(c) {
+    const g = new THREE.Group();
+    g.add(box(0.7, 0.35, 0.3, c));
+    g.add(box(0.7, 0.08, 0.3, '#fff', 0, 0.17, 0));
+    return g;
+  },
   cart(c) {
     // 바구니 top=0.6, 손잡이 기둥 bottom을 정확히 그 높이에서 시작해 맞닿게 함
     const g = new THREE.Group();

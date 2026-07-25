@@ -266,6 +266,22 @@ function buildNavCourse(segment) {
     sign.position.set(cx, 2.1, -z);
     g.add(sign);
   });
+  // 깃발 (P5 §A-인지 L5 "걷기 중 표지 계수" — 이중과제: 조향하며 색으로 셈)
+  (segment.flags || []).forEach(fl => {
+    const z = fl.z * len;
+    const cx = laneCenterX(segment, z);
+    const color = fl.color === 'orange' ? '#ed8936' : '#48bb78';
+    const flagGroup = new THREE.Group();
+    const pole = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.6, 0.08),
+      new THREE.MeshStandardMaterial({ color: '#718096', flatShading: true }));
+    pole.position.y = 0.8;
+    const flag = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.34, 0.06),
+      new THREE.MeshStandardMaterial({ color, flatShading: true }));
+    flag.position.set(0.29, 1.4, 0);
+    flagGroup.add(pole, flag);
+    flagGroup.position.set(cx + fl.xOffset, 0, -z);
+    g.add(flagGroup);
+  });
   // 도착 게이트
   const gate = new THREE.Group();
   const gm = new THREE.MeshStandardMaterial({ color: '#4fd1c5' });
@@ -388,21 +404,29 @@ class NavPhase {
     this.armPhase = 0;
     this.done = false;
     this.metrics = { strokes: 0 };
+    const orangeCount = (segment.flags || []).filter(f => f.color === 'orange').length;
+    if (orangeCount > 0) this.metrics.flagsTotal = orangeCount;
     this.steerCourse = STEER_COURSE_TYPES.includes(segment.courseType);
     // 게이트/갈림길은 통과 시점에 1회만 판정 — 비처벌(실패해도 진행은 계속)
     this.gateState = (segment.gates || []).map(gt => ({ ...gt, done: false }));
     this.forkState = (segment.forks || []).map(fk => ({ ...fk, done: false }));
+    // 깃발(이중과제) — 통과 시점에 색만 셈(관찰 지표). 정답 확인은 뒤따르는 회상 스텝이 담당.
+    this.flagState = (segment.flags || []).map(fl => ({ ...fl, done: false }));
     avatar.position.set(0, 0, 0);
     hudStep.textContent = '';
     setHotbar(null);
     videoWrap.classList.add('hidden'); // 렌더링만 토글 — 스트림은 유지 (브리프 A7)
+    const hasFlags = (segment.flags || []).length > 0;
     this.baseInstruction =
       segment.theme === 'elevator' ? '🛗 엘리베이터를 타고 내려가요'
       : segment.level === 0 ? '앞으로 가요!'
       : segment.courseType === 'gate' ? '양손을 저어 가며, 좁은 문 사이로 조향해서 지나가요!'
       : segment.courseType === 'curve' ? '길이 휘어져요 — 몸을 계속 기울여 길을 따라가요!'
       : segment.courseType === 'fork' ? '표지판을 보고 방향을 정해 조향해요!'
-      : segment.courseType === 'forkMemory' ? '외운 경로대로 방향을 정해 조향해요!'
+      : segment.courseType === 'forkMemory'
+        ? (hasFlags ? '외운 경로대로 조향하면서, 주황 깃발도 몇 개인지 세어 봐요! (초록은 세지 않아요)'
+                    : '외운 경로대로 방향을 정해 조향해요!')
+      : hasFlags ? '조향하면서 주황 깃발이 몇 개인지 세어 봐요! (초록은 세지 않아요)'
       : segment.level === 1 ? '양손을 번갈아 저어 앞으로 가요!'
       : '양손을 번갈아 젓고, 몸을 기울여 방향을 바꿔요!';
     // 미니맵 암기 (L5 §A) — 출발 전 정답 경로를 잠깐 보여주고 감춤 (mart listRevealS와 동일 패턴)
@@ -476,6 +500,16 @@ class NavPhase {
           sfx.blinkTick();
         } else {
           sfx.assist();
+        }
+      }
+    }
+    // 깃발 통과 관찰 지표(이중과제) — 주황만 셈, 초록은 방해자극이라 세지 않음. 비처벌.
+    for (const fl of this.flagState) {
+      if (!fl.done && this.travelled >= fl.z * this.length) {
+        fl.done = true;
+        if (fl.color === 'orange') {
+          this.metrics.flagsSeen = (this.metrics.flagsSeen || 0) + 1;
+          sfx.blinkTick();
         }
       }
     }
@@ -1843,10 +1877,10 @@ function entrySummary(e, i) {
   const head = `${i + 1}. ${e.type === 'segment' ? '🏃 이동' : e.type === 'crossing' ? '🚦 횡단보도' : `${(PLACES[e.place]?.emoji || '📦')} ${e.title}`}`;
   const sec = (e.ms / 1000).toFixed(0);
   if (e.type === 'segment') {
-    const gT = e.gatesTotal, fT = e.forksTotal;
-    const extra = gT ? ` · 게이트 ${e.gatesPassed || 0}/${gT}`
-      : fT ? ` · 갈림길 ${e.forksCorrect || 0}/${fT}`
-      : '';
+    const gT = e.gatesTotal, fT = e.forksTotal, flT = e.flagsTotal;
+    const extra = (gT ? ` · 게이트 ${e.gatesPassed || 0}/${gT}` : '')
+      + (fT ? ` · 갈림길 ${e.forksCorrect || 0}/${fT}` : '')
+      + (flT ? ` · 깃발 관찰 ${e.flagsSeen || 0}/${flT}(참고용)` : '');
     return `${head} — ${sec}초 · 스트로크 ${e.strokes}${extra}${e.stars ? ` · ${'⭐'.repeat(e.stars)}` : ''}`;
   }
   if (e.type === 'crossing') {
@@ -2091,7 +2125,8 @@ function downloadBlob(content, type, filename) {
 const REPORT_COLS = ['idx', 'type', 'title', 'place', 'lv', 'ms', 'strokes', 'graspAttempts', 'graspFails',
   'releases', 'misplaced', 'wrongItem', 'budgetOvers', 'wrongSelects', 'steps', 'trackLosses',
   'assistLevel', 'stars', 'redBlockedPushes', 'waitMs', 'crossMs',
-  'gatesPassed', 'gatesTotal', 'forksCorrect', 'forksTotal', 'laneDeviationAvg'];
+  'gatesPassed', 'gatesTotal', 'forksCorrect', 'forksTotal', 'laneDeviationAvg',
+  'flagsSeen', 'flagsTotal'];
 document.getElementById('btnSaveJson').addEventListener('click', () => {
   downloadBlob(JSON.stringify(report, null, 2), 'application/json',
     `adl-report_${report.startedAt.replace(/[:.]/g, '-')}.json`);
@@ -2236,9 +2271,20 @@ function showStartError(err) {
 }
 
 /* ---------- 과제 선택 메뉴 (인지기능 배지 포함) ---------- */
+/* 정중선 교차 판정(P5 §A-옮기기 L3) — 저작 시 별도 플래그 없이 실제 좌표에서 유도.
+   사물·존이 화면 중앙(x=0.5)을 사이에 두고 반대편에 있고, 각각 중앙에서 충분히 떨어져 있을 때만 인정. */
+function crossesMidline(items, target) {
+  if (!target?.pos) return false;
+  const zoneSide = Math.sign(target.pos[0] - 0.5);
+  return (items || []).some(it =>
+    Math.abs(it.pos[0] - 0.5) > 0.08 && Math.abs(target.pos[0] - 0.5) > 0.08 &&
+    Math.sign(it.pos[0] - 0.5) !== 0 && Math.sign(it.pos[0] - 0.5) !== zoneSide);
+}
+
 function cognitiveTags(item) {
   if (item.type === 'segment') {
     const t = ['주의', '양측협응'];
+    if ((item.flags || []).length) t.unshift('이중과제');
     if (item.courseType === 'gate') t.unshift('조향정확도');
     else if (item.courseType === 'curve') t.unshift('지속적조향');
     else if (item.courseType === 'fork') t.unshift('방향판단');
@@ -2256,10 +2302,14 @@ function cognitiveTags(item) {
     t.push('순서기억', '주의');
     return t;
   }
-  if (item.kind === 'select') return ['작업기억', '인과추론'];
+  if (item.kind === 'select') {
+    if ((item.steps || []).some(s => s.recall)) return ['지연회상', '작업기억'];
+    return ['작업기억', '인과추론'];
+  }
   const items = item.items || [];
   const t = []; // 실행기능 태그를 앞으로 (slice(0,3)에서 살아남도록)
   if (item.budget > 0) t.push('계획·충동억제');
+  if (crossesMidline(items, item.target)) t.push('정중선교차');
   if (items.some(x => x.distractor)) t.push('선택적주의');
   if (item.hand === 'both' || items.some(x => x.hand === 'both')) t.push('양측협응');
   t.push('주의', '순서기억');
