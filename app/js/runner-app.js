@@ -82,6 +82,7 @@ document.getElementById('fileSession').addEventListener('change', async e => {
 const report = { startedAt: null, title: '', entries: [] };
 function pushReportEntry(item, phase, ms) {
   const e = { type: item.type, title: item.title || '', place: item.place || '', ms: Math.round(ms) };
+  if (item.difficulty) e.lv = item.difficulty;
   Object.assign(e, phase.metrics || {});
   report.entries.push(e);
 }
@@ -874,6 +875,9 @@ class StationPhase {
     );
     this.zoneRing.position.set(tw.x, tw.y, 0.05);
     this.root.add(this.zoneRing);
+    // P2 난이도 프리셋: 존 판정 배율·존 링 표시 (L5=숨김·위치 회상 — assist 발동 시 다시 표시)
+    this.zoneScale = this.grading.zoneScale || 1;
+    this.zoneRing.visible = this.grading.zoneRingVisible !== false;
 
     // 잡기 아이템
     this.items = (station.items || []).map((def, i) => {
@@ -1096,8 +1100,9 @@ class StationPhase {
 
     // 타깃 펄스 (assist 시 강조) — 판정은 정규화 좌표 원이므로 시각은 월드 타원(y를 aspect로 압축)
     const pulse = 1 + Math.sin(now / 1000 * 4) * (this.assistLevel >= 1 ? 0.15 : 0.04);
-    const zs = pulse * this.radiusScale();
+    const zs = pulse * this.radiusScale() * this.zoneScale;
     this.zoneRing.scale.set(zs, zs / stageAspect(), 1);
+    this.zoneRing.visible = (this.grading.zoneRingVisible !== false) || this.assistLevel >= 1;
     this.target.mesh.userData.spin.rotation.y += dt * 0.4;
 
     updateParticles(dt);
@@ -1122,7 +1127,7 @@ class StationPhase {
     this.metrics.releases++;
     const t = this.station.target;
     const d = Math.hypot(it.nx - t.pos[0], it.ny - t.pos[1]);
-    if (d <= t.zoneRadius * this.radiusScale()) {
+    if (d <= t.zoneRadius * this.zoneScale * this.radiusScale()) {
       const bounce = msg => {
         it.state = 'free';
         it.nx = Math.min(0.9, Math.max(0.1, t.pos[0] - 0.28 + Math.random() * 0.12));
@@ -1382,7 +1387,7 @@ class LivingScenePhase {
     this.metrics.releases++;
     const z = p.def.zone;
     const d = Math.hypot(p.nx - z.pos[0], p.ny - z.pos[1]);
-    if (d > z.radius * this.radiusScale()) {
+    if (d > z.radius * (this.grading.zoneScale || 1) * this.radiusScale()) {
       this.metrics.misplaced++;
       this.bounceProp(p); // 존 밖 → 그 자리에 남음, 재시도 가능 (실패 아님)
       return;
@@ -1870,7 +1875,7 @@ function downloadBlob(content, type, filename) {
   a.click();
   URL.revokeObjectURL(a.href);
 }
-const REPORT_COLS = ['idx', 'type', 'title', 'place', 'ms', 'strokes', 'graspAttempts', 'graspFails',
+const REPORT_COLS = ['idx', 'type', 'title', 'place', 'lv', 'ms', 'strokes', 'graspAttempts', 'graspFails',
   'releases', 'misplaced', 'wrongItem', 'budgetOvers', 'wrongSelects', 'steps', 'trackLosses',
   'assistLevel', 'stars', 'redBlockedPushes', 'waitMs', 'crossMs'];
 document.getElementById('btnSaveJson').addEventListener('click', () => {
@@ -2046,11 +2051,14 @@ function stageLabel(item) {
   if (item.type === 'crossing')
     return { emoji: '🚦', title: '횡단보도 건너기', type: `신호 지키기 · Level ${item.level}` };
   if (item.type === 'livingScene')
-    return { emoji: PLACES[item.place]?.emoji || '🏠', title: item.title, type: '생활 장면' };
+    return { emoji: PLACES[item.place]?.emoji || '🏠', title: item.title,
+      type: '생활 장면' + (item.difficulty ? ` · Lv.${item.difficulty}` : '') };
   const place = PLACES[item.place];
+  const lv = item.difficulty ? ` · Lv.${item.difficulty}` : '';
   if (item.kind === 'select')
-    return { emoji: place?.emoji || '🃏', title: item.title, type: '고르기' };
-  return { emoji: place?.emoji || '📦', title: item.title, type: item.budget > 0 ? '옮기기 · 예산' : '물건 옮기기' };
+    return { emoji: place?.emoji || '🃏', title: item.title, type: '고르기' + lv };
+  return { emoji: place?.emoji || '📦', title: item.title,
+    type: (item.budget > 0 ? '옮기기 · 예산' : '물건 옮기기') + lv };
 }
 
 function buildStageGrid() {

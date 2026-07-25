@@ -9,6 +9,41 @@ export const GRADING_DEFAULTS = {
   assistTimeoutS: 20,
 };
 
+/* 난이도 사다리 L1~L5 (difficulty-progression_v0.1.md §A) — 기존 grading 값의 프리셋 묶음.
+   수치는 전부 초기 추정(현장 캘리브레이션 대상). L2 ≈ 기존 기본값.
+   zoneScale: 존 판정 반경 배율 · zoneRingVisible: 존 링 표시(L5=숨김, 위치 회상 — 단 assist 발동 시 다시 표시) */
+export const DIFFICULTY_PRESETS = {
+  move: { // 옮기기 계열 (station move · livingScene carry형)
+    1: { graspRadius: 0.10,  tReleaseMs: 200, zoneScale: 1.3, zoneRingVisible: true,  assistTimeoutS: 15 },
+    2: { graspRadius: 0.07,  tReleaseMs: 300, zoneScale: 1.0, zoneRingVisible: true,  assistTimeoutS: 20 },
+    3: { graspRadius: 0.055, tReleaseMs: 350, zoneScale: 0.8, zoneRingVisible: true,  assistTimeoutS: 25 },
+    4: { graspRadius: 0.045, tReleaseMs: 400, zoneScale: 0.7, zoneRingVisible: true,  assistTimeoutS: 25 },
+    5: { graspRadius: 0.04,  tReleaseMs: 450, zoneScale: 0.6, zoneRingVisible: false, assistTimeoutS: 30 },
+  },
+  select: { // 고르기 계열 (dwell 유지 시간이 길수록 지속 요구 큼)
+    1: { dwellMs: 600,  assistTimeoutS: 15 },
+    2: { dwellMs: 900,  assistTimeoutS: 20 },
+    3: { dwellMs: 1100, assistTimeoutS: 25 },
+    4: { dwellMs: 1300, assistTimeoutS: 25 },
+    5: { dwellMs: 1500, assistTimeoutS: 30 },
+  },
+  memoryRevealS: { 1: 0, 2: 8, 3: 6, 4: 4, 5: 3 }, // 목록 노출 시간(초) · 0 = 상시 표시
+};
+
+/* 프리셋 적용: item.difficulty(1~5)가 있으면 grading에 프리셋을 덮어쓴다(저작 시점 적용 —
+   러너는 grading만 읽으므로 단순 유지). 에디터 슬라이더로 이후 미세조정하면 그 값이 우선. */
+export function applyDifficultyPreset(item) {
+  const lv = item.difficulty;
+  if (!lv) return item;
+  const family = item.kind === 'select' ? 'select' : 'move';
+  const preset = DIFFICULTY_PRESETS[family][lv];
+  if (preset) item.grading = { ...(item.grading || {}), ...preset };
+  if (item.type === 'livingScene' && item.listRevealS != null) {
+    item.listRevealS = DIFFICULTY_PRESETS.memoryRevealS[lv] ?? item.listRevealS;
+  }
+  return item;
+}
+
 export function makeSegment(over = {}) {
   return { type: 'segment', level: 1, length: 'short', theme: 'hall', ...over };
 }
@@ -20,7 +55,7 @@ export function makeCrossing(over = {}) {
 }
 
 export function makeStation(over = {}) {
-  return {
+  return applyDifficultyPreset({
     type: 'station',
     kind: 'move', // 'move' 옮기기 | 'select' 고르기(키오스크·정류장·길찾기)
     title: '새 스테이션',
@@ -31,13 +66,13 @@ export function makeStation(over = {}) {
     requiredCount: 0, // 0 = 전부 담기. >0이면 정답 사물 중 N개만 담으면 완료
     grading: { ...GRADING_DEFAULTS },
     ...over,
-  };
+  });
 }
 
 /* 고르기 스테이션 — 선택 패널(키오스크·버스 노선·길찾기 앱).
    steps: 순차 진행, 각 스텝은 카드 중 정답을 dwell(머무르기)로 선택 */
 export function makeSelectStation(over = {}) {
-  return {
+  return applyDifficultyPreset({
     type: 'station',
     kind: 'select',
     title: '고르기',
@@ -52,7 +87,7 @@ export function makeSelectStation(over = {}) {
     }],
     grading: { dwellMs: 900, assistTimeoutS: 20 },
     ...over,
-  };
+  });
 }
 
 /* 생활 장면(Living Scene) — scene-grammar_v0.1.md 정본.
@@ -60,7 +95,7 @@ export function makeSelectStation(over = {}) {
    각 행동은 상태 변화를 남기며, 선택된 행동은 다음 행동의 전제조건이 된다(P5·P8).
    props[].interaction: 'carryToZone'(존에 놓기) | 'slide'(축 제약 끌기) | 'bimanualLift'(양손 끌어올리기) */
 export function makeLivingScene(over = {}) {
-  return {
+  return applyDifficultyPreset({
     type: 'livingScene',
     place: 'room',
     title: '생활 장면',
@@ -70,7 +105,7 @@ export function makeLivingScene(over = {}) {
     props: [],                // 조작 사물: 아래 shape 참고
     grading: { ...GRADING_DEFAULTS },
     ...over,
-  };
+  });
 }
 
 /* 침실 아침 장면 — Scene Grammar §E-3 · §MVP-A.
@@ -104,6 +139,7 @@ export function makeBedroomMorningScene(over = {}) {
         occupation: '벗은 잠옷을 바구니에 넣어요', required: true, startHidden: true },
     ],
     exit: { transition: '이제 세수하러 가요' },
+    difficulty: 2,
     ...over,
   });
 }
@@ -129,6 +165,7 @@ export function makeWashstandMirrorScene(over = {}) {
         onComplete: { setUserState: { hygiene: 'teethBrushed' } } },
     ],
     exit: { transition: '상쾌해요! 이제 아침을 먹어요' },
+    difficulty: 2,
     ...over,
   });
 }
@@ -164,6 +201,7 @@ export function makeMartErrandScene(over = {}) {
         occupation: '', required: false },
     ],
     exit: { transition: '결제 완료! 이제 집에 가요' },
+    difficulty: 3,
     ...over,
   });
 }
@@ -222,7 +260,8 @@ export function decodeSession(str) {
 export function makeDemoSession() {
   const st = (title, place, instruction, items, target, extra = {}) =>
     makeStation({ title, place, instruction, items, target, grading: { ...GRADING_DEFAULTS }, ...extra });
-  const sel = (title, place, steps) => makeSelectStation({ title, place, steps });
+  const sel = (title, place, steps, difficulty) =>
+    makeSelectStation({ title, place, steps, ...(difficulty ? { difficulty } : {}) });
   return makeSession({
     title: '우리 마을 하루 (데모)',
     flow: [
@@ -231,19 +270,21 @@ export function makeDemoSession() {
       st('아침 식사', 'kitchen', '빵과 주스를 쟁반에 올려요',
         [{ lib: 'bread', pos: [0.25, 0.62], scale: 1, hand: 'any' },
          { lib: 'juice', pos: [0.42, 0.68], scale: 1, hand: 'any' }],
-        { lib: 'tray', pos: [0.75, 0.65], scale: 1.3, zoneRadius: 0.12 }),
+        { lib: 'tray', pos: [0.75, 0.65], scale: 1.3, zoneRadius: 0.12 },
+        { difficulty: 1 }),
       // 외출: 신발장에서 신발을 '꺼내' 발판 위에서 신는다 (방향 반전 — 현장 피드백)
       st('신발 꺼내 신기', 'entrance', '신발장에서 신발을 꺼내 발판에 놓아요',
         [{ lib: 'shoe', pos: [0.22, 0.55], scale: 1, hand: 'any' },
          { lib: 'shoe', pos: [0.3, 0.68], scale: 1, hand: 'any' }],
-        { lib: 'footmat', pos: [0.74, 0.68], scale: 1.3, zoneRadius: 0.13 }),
+        { lib: 'footmat', pos: [0.74, 0.68], scale: 1.3, zoneRadius: 0.13 },
+        { difficulty: 2 }),
       // 엘리베이터 = 버튼 누르기 (항행 아님 — 현장 피드백)
       sel('엘리베이터 타기', 'elevator', [
         { prompt: '🛗 1층 버튼을 눌러요',
           options: [{ label: '2층', emoji: '2️⃣', correct: false },
                     { label: '1층', emoji: '1️⃣', correct: true },
                     { label: '지하', emoji: '🅱️', correct: false }] },
-      ]),
+      ], 1),
       makeSegment({ level: 1, length: 'short', theme: 'street' }),
       sel('버스 타기', 'busstop', [
         { prompt: '학교 가는 3번 버스를 골라요',
@@ -253,14 +294,15 @@ export function makeDemoSession() {
         { prompt: '버스가 왔어요! 타는 문을 골라요',
           options: [{ label: '앞문', emoji: '🚪', correct: true },
                     { label: '뒷문', emoji: '🚫', correct: false }] },
-      ]),
+      ], 2),
       makeSegment({ level: 1, length: 'short', theme: 'street' }),
       makeCrossing({ level: 1, redS: 7, greenS: 9 }),
       makeMartErrandScene(),
       st('문구점 들르기', 'stationery', '연필과 공책을 가방에 넣어요',
         [{ lib: 'pencil', pos: [0.26, 0.62], scale: 1, hand: 'any' },
          { lib: 'notebook', pos: [0.44, 0.68], scale: 1, hand: 'any' }],
-        { lib: 'backpack', pos: [0.77, 0.58], scale: 1.3, zoneRadius: 0.12 }),
+        { lib: 'backpack', pos: [0.77, 0.58], scale: 1.3, zoneRadius: 0.12 },
+        { difficulty: 2 }),
       sel('카페 키오스크', 'cafe', [
         { prompt: '딸기주스를 주문해요 — 메뉴에서 골라요',
           options: [{ label: '딸기주스', emoji: '🍓', correct: true },
@@ -269,7 +311,7 @@ export function makeDemoSession() {
         { prompt: '결제 버튼을 눌러요',
           options: [{ label: '결제', emoji: '💳', correct: true },
                     { label: '취소', emoji: '❌', correct: false }] },
-      ]),
+      ], 2),
       sel('길찾기 앱', 'street', [
         { prompt: '🗺️ 학교는 어느 쪽일까요? 지도를 보고 골라요',
           options: [{ label: '위쪽', emoji: '⬆️', correct: true },
@@ -280,7 +322,8 @@ export function makeDemoSession() {
       st('교실 도착', 'school', '큰 책은 양손으로! 책상에 꺼내요',
         [{ lib: 'pencilcase', pos: [0.25, 0.6], scale: 1, hand: 'any' },
          { lib: 'book', pos: [0.42, 0.68], scale: 1.7, hand: 'both' }],
-        { lib: 'desk', pos: [0.76, 0.62], scale: 1.4, zoneRadius: 0.14 }),
+        { lib: 'desk', pos: [0.76, 0.62], scale: 1.4, zoneRadius: 0.14 },
+        { difficulty: 3 }),
     ],
   });
 }

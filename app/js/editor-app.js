@@ -2,7 +2,7 @@
    저작물은 JSON — 러너와 분리 (브리프 Exit: 도구 중단 시에도 데이터 이식 가능) */
 import {
   makeSession, makeSegment, makeStation, makeSelectStation, makeCrossing, makeDemoSession,
-  validateSession, encodeSession, decodeSession, GRADING_DEFAULTS,
+  validateSession, encodeSession, decodeSession, GRADING_DEFAULTS, applyDifficultyPreset,
 } from './session.js';
 import { LIBRARY, libMeta, PLACES } from './library-meta.js';
 
@@ -57,7 +57,7 @@ function renderFlow() {
       ? `🏃 이동 · Level ${f.level} · ${{ short: '짧게', medium: '보통', long: '길게' }[f.length]}`
       : f.type === 'crossing'
       ? `🚦 횡단보도 · Level ${f.level}`
-      : `${PLACES[f.place]?.emoji || (f.kind === 'select' ? '🃏' : '📦')} ${f.title}${f.kind === 'select' ? ' (고르기)' : ''}`;
+      : `${PLACES[f.place]?.emoji || (f.kind === 'select' ? '🃏' : '📦')} ${f.title}${f.kind === 'select' ? ' (고르기)' : ''}${f.difficulty ? ` · L${f.difficulty}` : ''}`;
     card.innerHTML = `
       <span class="flowLabel">${i + 1}. ${label}</span>
       <span class="flowBtns">
@@ -279,6 +279,24 @@ window.addEventListener('mouseup', () => {
 function fieldRow(label, inputHtml) {
   return `<div class="fRow"><label>${label}</label>${inputHtml}</div>`;
 }
+/* 난이도 프리셋 UI (P2) — 선택 시 grading에 프리셋 기입, 이후 슬라이더 미세조정은 그대로 유지 */
+function difficultyRow(st) {
+  const opts = [1, 2, 3, 4, 5].map(l =>
+    `<option value="${l}" ${st.difficulty === l ? 'selected' : ''}>L${l}</option>`).join('');
+  return fieldRow('난이도 프리셋', `
+    <select id="gDifficulty">
+      <option value="">직접 설정</option>${opts}
+    </select>`);
+}
+function bindDifficulty(st) {
+  $('gDifficulty').addEventListener('change', e => {
+    const v = +e.target.value;
+    if (v) { st.difficulty = v; applyDifficultyPreset(st); }
+    else delete st.difficulty;
+    renderProps(); renderFlow(); autosave();
+  });
+}
+
 
 function renderProps() {
   const f = session.flow[selectedFlow];
@@ -367,10 +385,12 @@ function renderProps() {
       ${stepsHtml}
       <button id="addStep" class="tiny wide">+ 스텝 추가</button>
       <h4>단계조절</h4>
+      ${difficultyRow(st)}
       ${fieldRow(`머무르기 시간 <b>${g.dwellMs}ms</b>`, `<input type="range" id="gDwell" min="400" max="2000" step="100" value="${g.dwellMs}">`)}
       ${fieldRow(`도움 시작 <b>${g.assistTimeoutS}s</b>`, `<input type="range" id="gAssist" min="5" max="60" step="5" value="${g.assistTimeoutS}">`)}`;
     $('pTitle').addEventListener('input', e => { st.title = e.target.value; renderFlow(); autosave(); });
     $('pPlace').addEventListener('change', e => { st.place = e.target.value; renderFlow(); autosave(); });
+    bindDifficulty(st);
     $('gDwell').addEventListener('input', e => { g.dwellMs = +e.target.value; renderProps(); autosave(); });
     $('gAssist').addEventListener('input', e => { g.assistTimeoutS = +e.target.value; renderProps(); autosave(); });
     $('addStep').addEventListener('click', () => {
@@ -434,6 +454,7 @@ function renderProps() {
     ${fieldRow('장소 (마을 공간)', `<select id="pPlace">${placeOpts}</select>`)}
     ${fieldRow('아이 안내문', `<input type="text" id="pInstr" value="${(st.instruction || '').replace(/"/g, '&quot;')}">`)}
     <h4>단계조절</h4>
+    ${difficultyRow(st)}
     ${fieldRow(`잡기 반경 <b>${g.graspRadius.toFixed(2)}</b>`, `<input type="range" id="gRadius" min="0.03" max="0.15" step="0.01" value="${g.graspRadius}">`)}
     ${fieldRow(`놓기 유지 <b>${g.tReleaseMs}ms</b>`, `<input type="range" id="gRelease" min="150" max="800" step="50" value="${g.tReleaseMs}">`)}
     ${fieldRow(`도움 시작 <b>${g.assistTimeoutS}s</b>`, `<input type="range" id="gAssist" min="5" max="60" step="5" value="${g.assistTimeoutS}">`)}
@@ -445,6 +466,7 @@ function renderProps() {
   $('pTitle').addEventListener('input', e => { st.title = e.target.value; renderFlow(); autosave(); });
   $('pPlace').addEventListener('change', e => { st.place = e.target.value; renderFlow(); autosave(); });
   $('pInstr').addEventListener('input', e => { st.instruction = e.target.value; autosave(); });
+  bindDifficulty(st);
   $('pBudget').addEventListener('input', e => { st.budget = Math.max(0, +e.target.value || 0); autosave(); });
   $('pReqCount').addEventListener('input', e => { st.requiredCount = Math.max(0, +e.target.value || 0); autosave(); });
   $('gRadius').addEventListener('input', e => { g.graspRadius = +e.target.value; renderProps(); autosave(); });
