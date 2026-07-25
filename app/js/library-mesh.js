@@ -383,6 +383,19 @@ const BUILDERS = {
     g.add(box(0.3, 0.05, 0.05, '#e53e3e', 0.3, 0.2, 0.13)); // 스캔 빔
     return g;
   },
+  transitcard(c) {
+    const g = new THREE.Group();
+    g.add(box(0.7, 0.44, 0.04, c));
+    g.add(box(0.5, 0.1, 0.05, '#ffffff', 0, 0.12, 0.01));
+    return g;
+  },
+  cardReader(c) {
+    const g = new THREE.Group();
+    g.add(box(0.5, 0.9, 0.35, c));
+    g.add(box(0.4, 0.3, 0.05, '#1a202c', 0, 0.15, 0.19));
+    g.add(box(0.12, 0.12, 0.06, '#68d391', 0, 0.32, 0.2));
+    return g;
+  },
 };
 
 /* size(정규화 반경) → 월드 스케일로 빌드. 스테이션 씬 월드는 x 0~1 좌표계.

@@ -51,6 +51,8 @@ export const LIBRARY = {
   candy:      { name: '사탕',     emoji: '🍬', color: '#ed64a6', size: 0.04 },
   shelf:      { name: '진열대',   emoji: '🗄️', color: '#a0aec0', size: 0.13 },
   checkoutScanner: { name: '계산대', emoji: '🖥️', color: '#4a5568', size: 0.1 },
+  transitcard: { name: '교통카드', emoji: '💳', color: '#319795', size: 0.045 },
+  cardReader: { name: '카드 단말기', emoji: '📟', color: '#2d3748', size: 0.09, targetOk: true },
 };
 
 /* 스테이션 장소 (place) — 거울 모드 위 장소 칩 + 3D 소품 데코 색 */

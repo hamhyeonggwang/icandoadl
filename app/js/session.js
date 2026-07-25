@@ -350,17 +350,18 @@ export function makeDemoSession() {
       ], 1),
       walk('street', 'short', 2), // 게이트: 정렬 조향
       // 버스 노선 = 색+번호로 식별(사용자 결정) — 초록 7737을 학교 가는 버스로 지정
-      sel('버스 타기', 'busstop', [
+      sel('버스 노선 고르기', 'busstop', [
         { prompt: '학교 가는 초록 7737번 버스를 골라요',
           options: [{ label: '빨강 1200', emoji: '🔴', correct: false },
                     { label: '초록 7737', emoji: '🟢', correct: true },
                     { label: '파랑 730', emoji: '🔵', correct: false }] },
-        // 문 선택(앞문/뒷문)은 실제 탑승 행동과 무관해 억지스럽다는 지적(사용자) — 실제
-        // 탑승 루틴인 교통카드 태그로 교체
-        { prompt: '버스에 올라 교통카드를 태그해요',
-          options: [{ label: '카드 태그', emoji: '💳', correct: true },
-                    { label: '그냥 지나가기', emoji: '🚫', correct: false }] },
       ], 2),
+      // 교통카드 태그(사용자 지시): 문 선택 같은 억지 메뉴가 아니라, 카드를 잡아 단말기
+      // 위치로 옮기는 실제 모션 과제 — 기존 GRASP→CARRY→RELEASE 그대로 재사용.
+      st('교통카드 태그하기', 'busstop', '카드를 잡아 단말기에 태그해요',
+        [{ lib: 'transitcard', pos: [0.24, 0.6], scale: 1, hand: 'any' }],
+        { lib: 'cardReader', pos: [0.72, 0.55], scale: 1.2, zoneRadius: 0.12 },
+        { difficulty: 1 }),
       walk('street', 'short', 3), // 커브: 지속 조향
       // 횡단보도 R2 승격(crosswalk-core_v0.1.md, 확정): 좌→우 살핌 강제·반복 3회·
       // 공 시나리오는 3번째(마지막=적용 단계)에 고정
