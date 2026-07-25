@@ -189,7 +189,7 @@ export function makeWashstandMirrorScene(over = {}) {
   return makeLivingScene({
     place: 'washstand',
     title: '거울 앞에서 이 닦기',
-    purpose: '거울을 보면서 칫솔로 이를 닦아요',
+    purpose: '거울을 보면서 이 닦고 세수해요',
     userState: { hygiene: 'none' },
     roomBackdrop: '#8fb3c7',           // 세면실 벽(배경) — 웹캠은 거울에만 나타남
     mirror: { pos: [0.5, 0.4], w: 0.5, h: 0.5 },
@@ -197,10 +197,22 @@ export function makeWashstandMirrorScene(over = {}) {
       { id: 'sink', lib: 'sink', pos: [0.5, 0.86], scale: 1.7 },
     ],
     props: [
+      // 1) 치약을 쥐어 칫솔에 발라요 — carryToZone 재사용(신규 인식 없음)
+      { id: 'toothpaste', lib: 'toothpaste', pos: [0.32, 0.7], scale: 0.9, hand: 'any',
+        interaction: 'carryToZone', zone: { pos: [0.2, 0.72], radius: 0.1 },
+        occupation: '치약을 짜서 칫솔에 발라요', required: true },
+      // 2) 칫솔질(기존 oscillate 왕복 판정)
       { id: 'toothbrush', lib: 'toothbrush', pos: [0.2, 0.72], scale: 1.1, hand: 'any',
         interaction: 'oscillate', oscTarget: 8, // 기본값 — params.js OSC_TARGET_DEFAULT와 동일(초기 추정)
         occupation: '칫솔을 잡고 이를 닦아요', required: true,
-        onComplete: { setUserState: { hygiene: 'teethBrushed' } } },
+        onComplete: { setUserState: { hygiene: 'teethBrushed' }, reveal: 'washface' } },
+      // 3) 칫솔질 후 양손 세수(사용자 지시 신설) — bimanualLift 재사용(블랭킷 개기와 동일 문법),
+      // 손을 싱크대 높이에서 얼굴 높이로 들어올리는 동작으로 "물을 떠서 세수"를 표현
+      { id: 'washface', lib: 'water', pos: [0.5, 0.78], scale: 1.0, hand: 'both',
+        interaction: 'bimanualLift', axis: 'y', dir: -1, distance: 0.16,
+        foldedPos: [0.5, 0.58], foldedScale: 0.5,
+        occupation: '양손으로 물을 떠서 세수해요', required: true, startHidden: true,
+        onComplete: { setUserState: { hygiene: 'faceWashed' } } },
     ],
     exit: { transition: '상쾌해요! 이제 아침을 먹어요' },
     difficulty: 2,

@@ -10,6 +10,8 @@ export const LIBRARY = {
   apple:      { name: '사과',     emoji: '🍎', color: '#e53e3e', size: 0.04 },
   cup:        { name: '컵',       emoji: '🥤', color: '#38b2ac', size: 0.045 },
   toothbrush: { name: '칫솔',     emoji: '🪥', color: '#805ad5', size: 0.045 },
+  toothpaste: { name: '치약',     emoji: '🧴', color: '#4299e1', size: 0.04 },
+  water:      { name: '물',       emoji: '💧', color: '#63b3ed', size: 0.05 },
   soap:       { name: '비누',     emoji: '🧼', color: '#fbb6ce', size: 0.045 },
   towel:      { name: '수건',     emoji: '🧻', color: '#4fd1c5', size: 0.05 },
   sock:       { name: '양말',     emoji: '🧦', color: '#ed64a6', size: 0.045 },

@@ -106,6 +106,18 @@ const BUILDERS = {
   soap(c) {
     return box(1, 0.45, 0.65, c, 0, 0, 0, { roughness: 0.35 });
   },
+  toothpaste(c) {
+    const g = new THREE.Group();
+    g.add(box(0.42, 1.0, 0.28, c));
+    g.add(box(0.24, 0.24, 0.2, '#e2e8f0', 0, 0.62, 0));
+    return g;
+  },
+  water(c) {
+    const g = new THREE.Group();
+    g.add(box(0.9, 0.22, 0.7, c, 0, 0, 0, { transparent: true, opacity: 0.85 }));
+    g.add(box(0.55, 0.14, 0.42, '#bee3f8', 0, 0.15, 0, { transparent: true, opacity: 0.85 }));
+    return g;
+  },
   towel(c) {
     const g = new THREE.Group();
     g.add(box(0.9, 1.1, 0.25, c));
