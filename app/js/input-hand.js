@@ -4,6 +4,18 @@
 import { HandLandmarker, PoseLandmarker, FilesetResolver } from '@mediapipe/tasks-vision';
 import { PARAMS } from './params.js';
 
+const MODEL_LOAD_TIMEOUT_MS = 20000;
+
+function withTimeout(promise, ms) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(
+      () => reject(new Error('인식 모델을 불러오는 데 시간이 너무 오래 걸려요. 네트워크 상태를 확인하고 다시 시도해 주세요.')),
+      ms
+    )),
+  ]);
+}
+
 function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
 
 // 손 랜드마크: 0 WRIST, 5 indexMCP, 8/12/16/20 TIP
@@ -47,23 +59,34 @@ export class HandDriver {
     this.videoEl = video;
 
     onStage?.('model');
-    const vision = await FilesetResolver.forVisionTasks(
-      'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm'
+    // 모델 다운로드가 막히거나 비정상적으로 오래 걸리면 로딩화면에 무기한 멈추는 대신
+    // 명확한 오류로 실패시킨다(호출부의 showStartError가 받아 표시).
+    const vision = await withTimeout(
+      FilesetResolver.forVisionTasks(
+        'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm'
+      ),
+      MODEL_LOAD_TIMEOUT_MS
     );
-    this._hand = await HandLandmarker.createFromOptions(vision, {
-      baseOptions: {
-        modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',
-        delegate: 'GPU',
-      },
-      runningMode: 'VIDEO', numHands: 2,
-    });
-    this._pose = await PoseLandmarker.createFromOptions(vision, {
-      baseOptions: {
-        modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task',
-        delegate: 'GPU',
-      },
-      runningMode: 'VIDEO', numPoses: 1,
-    });
+    // 손·자세 모델을 동시에 불러와 순차 로딩 대비 대기 시간을 절반 가까이 줄인다.
+    [this._hand, this._pose] = await withTimeout(
+      Promise.all([
+        HandLandmarker.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',
+            delegate: 'GPU',
+          },
+          runningMode: 'VIDEO', numHands: 2,
+        }),
+        PoseLandmarker.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task',
+            delegate: 'GPU',
+          },
+          runningMode: 'VIDEO', numPoses: 1,
+        }),
+      ]),
+      MODEL_LOAD_TIMEOUT_MS
+    );
   }
 
   /* 15초 캘리브레이션: 펴기 5s → 쥐기 5s → 중립 5s
